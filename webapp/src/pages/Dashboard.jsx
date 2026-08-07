@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { getJSON } from '../api/client'
+import NewsFeed from '../components/NewsFeed'
 import Sparkline from '../components/Sparkline'
 import './Dashboard.css'
 
@@ -19,14 +20,53 @@ function ChangeBadge({ percent }) {
   const positive = percent >= 0
   return (
     <span className={`change-badge ${positive ? 'change-badge--good' : 'change-badge--bad'}`}>
-      {positive ? '↑' : '↓'} {Math.abs(percent).toFixed(2)}%
+      {positive ? '+' : '-'}{Math.abs(percent).toFixed(2)}%
     </span>
+  )
+}
+
+/** One labeled group of ticker rows inside a shared card - used for
+ * Trending, Most Active, Top Gainers, and Top Losers, which share a row
+ * shape but come from different feeds. */
+function TickerGroup({ label, tickers, emptyMessage, children }) {
+  return (
+    <div className="ticker-group">
+      <span className="ticker-group__label">{label}</span>
+      {tickers === null
+        ? Array.from({ length: 3 }, (_, i) => <div key={i} className="watchlist-row watchlist-row--loading" />)
+        : tickers.length === 0
+        ? <div className="watchlist-row watchlist-row--empty">{emptyMessage}</div>
+        : tickers.map((t) => {
+            const positive = t.day_change_percent >= 0
+            return (
+              <Link key={t.ticker} to={`/tickers/${t.ticker}`} className="watchlist-row">
+                <span className="watchlist-row__name">
+                  <span className="watchlist-row__ticker">{t.ticker}</span>
+                  <span className="watchlist-row__company">{t.company_name}</span>
+                </span>
+                <span className="watchlist-table__col-chart">
+                  <Sparkline values={t.day_prices} width={64} height={28} positive={positive} />
+                </span>
+                <span className="watchlist-table__col-price">
+                  <span className="watchlist-row__price num">${t.price.toFixed(2)}</span>
+                  <ChangeBadge percent={t.day_change_percent} />
+                </span>
+              </Link>
+            )
+          })}
+      {children}
+    </div>
   )
 }
 
 export default function Dashboard() {
   const [quotes, setQuotes] = useState(null)
   const [marketQuotesList, setMarketQuotesList] = useState(null)
+  const [news, setNews] = useState(null)
+  const [trending, setTrending] = useState(null)
+  const [mostActive, setMostActive] = useState(null)
+  const [gainers, setGainers] = useState(null)
+  const [losers, setLosers] = useState(null)
   const [error, setError] = useState(null)
   const [canScrollLeft, setCanScrollLeft] = useState(false)
   const [canScrollRight, setCanScrollRight] = useState(false)
@@ -51,6 +91,21 @@ export default function Dashboard() {
     getJSON(`/watchlist?symbols=${MARKET_INSTRUMENTS.map((i) => i.ticker).join(',')}`)
       .then((data) => !cancelled && setMarketQuotesList(data))
       .catch(() => {})
+    getJSON('/news')
+      .then((data) => !cancelled && setNews(data))
+      .catch(() => !cancelled && setNews([]))
+    getJSON('/trending')
+      .then((data) => !cancelled && setTrending(data))
+      .catch(() => !cancelled && setTrending([]))
+    getJSON('/most-active')
+      .then((data) => !cancelled && setMostActive(data))
+      .catch(() => !cancelled && setMostActive([]))
+    getJSON('/gainers')
+      .then((data) => !cancelled && setGainers(data))
+      .catch(() => !cancelled && setGainers([]))
+    getJSON('/losers')
+      .then((data) => !cancelled && setLosers(data))
+      .catch(() => !cancelled && setLosers([]))
     return () => {
       cancelled = true
     }
@@ -116,56 +171,46 @@ export default function Dashboard() {
         </div>
       </section>
 
-      <section className="dashboard__section">
-        <div className="dashboard__section-head">
-          <h2>Watchlist</h2>
-          <span className="dashboard__section-count num">{quotes?.length ?? '–'} tickers</span>
-        </div>
-        <div className="card watchlist-table">
-          <div className="watchlist-table__head">
-            <span>Symbol</span>
-            <span className="watchlist-table__col-price">Price</span>
-            <span className="watchlist-table__col-change">Change</span>
-            <span className="watchlist-table__col-chart">1M</span>
+      <div className="dashboard__columns">
+        <section className="dashboard__section dashboard__section--news">
+          <div className="dashboard__section-head">
+            <h2>Latest News</h2>
           </div>
-          {quotes === null
-            ? Array.from({ length: 5 }, (_, i) => <div key={i} className="watchlist-row watchlist-row--loading" />)
-            : quotes.map((q) => {
-                const positive = q.day_change_percent >= 0
-                return (
-                  <Link key={q.ticker} to={`/tickers/${q.ticker}`} className="watchlist-row">
-                    <span className="watchlist-row__name">
-                      <span className="watchlist-row__ticker">{q.ticker}</span>
-                      <span className="watchlist-row__company">{q.company_name}</span>
-                    </span>
-                    <span className="watchlist-table__col-price num">${q.price.toFixed(2)}</span>
-                    <span className="watchlist-table__col-change">
-                      <ChangeBadge percent={q.day_change_percent} />
-                    </span>
-                    <span className="watchlist-table__col-chart">
-                      <Sparkline values={q.sparkline} positive={positive} />
-                    </span>
-                  </Link>
-                )
-              })}
-          <div className="watchlist-row watchlist-row--add" title="Coming soon">
-            <span>+ Add ticker</span>
-          </div>
-        </div>
-      </section>
+          <NewsFeed articles={news} />
+        </section>
 
-      <section className="quick-nav">
-        <Link to="/tickers/NVDA/team" className="card quick-nav__card">
-          <span className="eyebrow">Multi-agent verdict</span>
-          <h3>Stock Team Analysis</h3>
-          <p>Get a buy/hold/sell verdict from fundamentals + sentiment specialists.</p>
-        </Link>
-        <Link to="/chat" className="card quick-nav__card">
-          <span className="eyebrow">Ask anything</span>
-          <h3>Research Chat</h3>
-          <p>Ask open-ended questions about your watchlist or any ticker.</p>
-        </Link>
-      </section>
+        <div className="dashboard__side">
+          <section className="dashboard__section">
+            <div className="dashboard__section-head">
+              <h2>Watchlist &amp; Movers</h2>
+            </div>
+            <div className="card watchlist-table ticker-groups">
+              <TickerGroup label="Watchlist" tickers={quotes} emptyMessage="No watchlist tickers yet.">
+                <div className="watchlist-row watchlist-row--add" title="Coming soon">
+                  <span>+ Add ticker</span>
+                </div>
+              </TickerGroup>
+              <TickerGroup label="Trending" tickers={trending} emptyMessage="No trending data right now." />
+              <TickerGroup label="Most active" tickers={mostActive} emptyMessage="No active-trading data right now." />
+              <TickerGroup label="Top gainers" tickers={gainers} emptyMessage="No gainers data right now." />
+              <TickerGroup label="Top losers" tickers={losers} emptyMessage="No losers data right now." />
+            </div>
+          </section>
+
+          <section className="quick-nav">
+            <Link to="/tickers/NVDA/team" className="card quick-nav__card">
+              <span className="eyebrow">Multi-agent verdict</span>
+              <h3>Stock Team Analysis</h3>
+              <p>Get a buy/hold/sell verdict from fundamentals + sentiment specialists.</p>
+            </Link>
+            <Link to="/chat" className="card quick-nav__card">
+              <span className="eyebrow">Ask anything</span>
+              <h3>Research Chat</h3>
+              <p>Ask open-ended questions about your watchlist or any ticker.</p>
+            </Link>
+          </section>
+        </div>
+      </div>
     </div>
   )
 }

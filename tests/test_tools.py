@@ -218,6 +218,24 @@ def test_get_sparkline_prices_raises_when_empty(mock_ticker_cls):
         tools.get_sparkline_prices("BADTICKER")
 
 
+@patch("core.tools.yf.Ticker")
+def test_get_day_prices_returns_intraday_closes(mock_ticker_cls):
+    history = pd.DataFrame({"Close": [100.0, 101.5, 99.8]})
+    mock_ticker_cls.return_value = make_ticker(history=history)
+
+    day_prices = tools.get_day_prices("NVDA")
+
+    assert day_prices == [100.0, 101.5, 99.8]
+    mock_ticker_cls.return_value.history.assert_called_once_with(period="1d", interval="5m")
+
+
+@patch("core.tools.yf.Ticker")
+def test_get_day_prices_returns_empty_list_when_no_intraday_bars(mock_ticker_cls):
+    mock_ticker_cls.return_value = make_ticker(history=pd.DataFrame())
+
+    assert tools.get_day_prices("NVDA") == []
+
+
 def make_article(title):
     return {"content": {"title": title}}
 
@@ -258,6 +276,246 @@ def test_get_news_headlines_raises_when_no_news(mock_ticker_cls):
 
     with pytest.raises(ValueError, match="No news found"):
         tools.get_news_headlines("BADTICKER")
+
+
+def make_news_article(title, url, publisher="Yahoo Finance", published_at="2026-08-07T12:00:00Z", thumbnail_url=None):
+    content = {
+        "title": title,
+        "canonicalUrl": {"url": url},
+        "provider": {"displayName": publisher},
+        "pubDate": published_at,
+    }
+    if thumbnail_url:
+        content["thumbnail"] = {"resolutions": [{"url": thumbnail_url}]}
+    return {"content": content}
+
+
+@patch("core.tools.yf.Ticker")
+def test_get_market_news_returns_articles_sorted_newest_first(mock_ticker_cls):
+    def side_effect(ticker):
+        news_by_ticker = {
+            "NVDA": [make_news_article("NVDA older", "https://example.com/nvda", published_at="2026-08-07T09:00:00Z")],
+            "AAPL": [make_news_article("AAPL newer", "https://example.com/aapl", published_at="2026-08-07T12:00:00Z")],
+        }
+        return make_ticker(news=news_by_ticker[ticker])
+
+    mock_ticker_cls.side_effect = side_effect
+
+    articles = tools.get_market_news(["NVDA", "AAPL"])
+
+    assert [a["title"] for a in articles] == ["AAPL newer", "NVDA older"]
+
+
+@patch("core.tools.yf.Ticker")
+def test_get_market_news_dedupes_by_url_across_tickers(mock_ticker_cls):
+    shared = make_news_article("Shared story", "https://example.com/shared")
+    mock_ticker_cls.return_value = make_ticker(news=[shared])
+
+    articles = tools.get_market_news(["NVDA", "AAPL"])
+
+    assert len(articles) == 1
+
+
+@patch("core.tools.yf.Ticker")
+def test_get_market_news_respects_limit(mock_ticker_cls):
+    articles = [make_news_article(f"Headline {i}", f"https://example.com/{i}") for i in range(10)]
+    mock_ticker_cls.return_value = make_ticker(news=articles)
+
+    result = tools.get_market_news(["NVDA"], limit=3)
+
+    assert len(result) == 3
+
+
+@patch("core.tools.yf.Ticker")
+def test_get_market_news_includes_publisher_and_thumbnail(mock_ticker_cls):
+    article = make_news_article(
+        "Headline", "https://example.com/a", publisher="Reuters", thumbnail_url="https://example.com/thumb.jpg"
+    )
+    mock_ticker_cls.return_value = make_ticker(news=[article])
+
+    [result] = tools.get_market_news(["NVDA"])
+
+    assert result["publisher"] == "Reuters"
+    assert result["thumbnail"] == "https://example.com/thumb.jpg"
+    assert result["url"] == "https://example.com/a"
+
+
+@patch("core.tools.yf.Ticker")
+def test_get_market_news_skips_articles_without_title_or_url(mock_ticker_cls):
+    mock_ticker_cls.return_value = make_ticker(
+        news=[{"content": {}}, make_news_article("Real headline", "https://example.com/real")]
+    )
+
+    articles = tools.get_market_news(["NVDA"])
+
+    assert [a["title"] for a in articles] == ["Real headline"]
+
+
+def make_quote(symbol, price=100.0, change_percent=1.5, volume=1_000_000, name=None):
+    return {
+        "symbol": symbol,
+        "longName": name or f"{symbol} Corp",
+        "regularMarketPrice": price,
+        "regularMarketChangePercent": change_percent,
+        "regularMarketVolume": volume,
+    }
+
+
+def make_trending_response(symbols):
+    response = MagicMock()
+    response.json.return_value = {"finance": {"result": [{"quotes": [{"symbol": s} for s in symbols]}]}}
+    return response
+
+
+@patch("core.tools.yf.Ticker")
+@patch("core.tools.requests.get")
+def test_get_trending_tickers_enriches_symbols_with_quote_data(mock_get, mock_ticker_cls):
+    mock_get.return_value = make_trending_response(["NVDA"])
+    mock_ticker_cls.return_value = make_ticker(
+        info={"currentPrice": 219.78, "longName": "NVIDIA Corporation", "regularMarketChangePercent": 0.26},
+        history=pd.DataFrame({"Close": [217.0, 219.78]}),
+    )
+
+    trending = tools.get_trending_tickers()
+
+    assert trending == [
+        {
+            "ticker": "NVDA",
+            "company_name": "NVIDIA Corporation",
+            "price": 219.78,
+            "day_change_percent": 0.26,
+            "volume": None,
+            "day_prices": [217.0, 219.78],
+        }
+    ]
+    mock_get.assert_called_once_with(
+        tools._TRENDING_URL, params={"count": 6}, headers={"User-Agent": "Mozilla/5.0"}, timeout=10
+    )
+    mock_ticker_cls.return_value.history.assert_called_with(period="1d", interval="5m")
+
+
+@patch("core.tools.yf.Ticker")
+@patch("core.tools.requests.get")
+def test_get_trending_tickers_respects_limit(mock_get, mock_ticker_cls):
+    mock_get.return_value = make_trending_response([])
+
+    tools.get_trending_tickers(limit=3)
+
+    mock_get.assert_called_once_with(
+        tools._TRENDING_URL, params={"count": 3}, headers={"User-Agent": "Mozilla/5.0"}, timeout=10
+    )
+
+
+@patch("core.tools.yf.Ticker")
+@patch("core.tools.requests.get")
+def test_get_trending_tickers_skips_symbols_without_a_price(mock_get, mock_ticker_cls):
+    mock_get.return_value = make_trending_response(["AAA", "BBB"])
+    mock_ticker_cls.side_effect = lambda ticker: make_ticker(
+        info={} if ticker == "AAA" else {"currentPrice": 50.0, "longName": "BBB Corp"}
+    )
+
+    trending = tools.get_trending_tickers()
+
+    assert [t["ticker"] for t in trending] == ["BBB"]
+
+
+@patch("core.tools.yf.Ticker")
+@patch("core.tools.requests.get")
+def test_get_trending_tickers_returns_empty_list_when_no_symbols(mock_get, mock_ticker_cls):
+    mock_get.return_value = make_trending_response([])
+
+    assert tools.get_trending_tickers() == []
+    mock_ticker_cls.assert_not_called()
+
+
+@patch("core.tools.yf.Ticker")
+@patch("core.tools.yf.screen")
+def test_get_most_active_tickers_extracts_quotes(mock_screen, mock_ticker_cls):
+    mock_screen.return_value = {"quotes": [make_quote("NVDA", price=219.78, change_percent=0.26, volume=5_000_000)]}
+    mock_ticker_cls.return_value = make_ticker(history=pd.DataFrame({"Close": [217.0, 219.78]}))
+
+    most_active = tools.get_most_active_tickers()
+
+    assert most_active == [
+        {
+            "ticker": "NVDA",
+            "company_name": "NVDA Corp",
+            "price": 219.78,
+            "day_change_percent": 0.26,
+            "volume": 5_000_000,
+            "day_prices": [217.0, 219.78],
+        }
+    ]
+    mock_screen.assert_called_once_with("most_actives", count=6)
+
+
+@patch("core.tools.yf.screen")
+def test_get_most_active_tickers_respects_limit(mock_screen):
+    mock_screen.return_value = {"quotes": []}
+
+    tools.get_most_active_tickers(limit=3)
+
+    mock_screen.assert_called_once_with("most_actives", count=3)
+
+
+@patch("core.tools.yf.Ticker")
+@patch("core.tools.yf.screen")
+def test_get_top_gainers_extracts_quotes(mock_screen, mock_ticker_cls):
+    mock_screen.return_value = {"quotes": [make_quote("SPCX", price=131.55, change_percent=14.47, volume=210_927_255)]}
+    mock_ticker_cls.return_value = make_ticker(history=pd.DataFrame({"Close": [120.0, 131.55]}))
+
+    gainers = tools.get_top_gainers()
+
+    assert gainers == [
+        {
+            "ticker": "SPCX",
+            "company_name": "SPCX Corp",
+            "price": 131.55,
+            "day_change_percent": 14.47,
+            "volume": 210_927_255,
+            "day_prices": [120.0, 131.55],
+        }
+    ]
+    mock_screen.assert_called_once_with("day_gainers", count=6)
+
+
+@patch("core.tools.yf.screen")
+def test_get_top_gainers_respects_limit(mock_screen):
+    mock_screen.return_value = {"quotes": []}
+
+    tools.get_top_gainers(limit=3)
+
+    mock_screen.assert_called_once_with("day_gainers", count=3)
+
+
+@patch("core.tools.yf.Ticker")
+@patch("core.tools.yf.screen")
+def test_get_top_losers_extracts_quotes(mock_screen, mock_ticker_cls):
+    mock_screen.return_value = {"quotes": [make_quote("XYZ", price=12.34, change_percent=-9.87, volume=8_000_000)]}
+    mock_ticker_cls.return_value = make_ticker(history=pd.DataFrame({"Close": [14.0, 12.34]}))
+
+    losers = tools.get_top_losers()
+
+    assert losers == [
+        {
+            "ticker": "XYZ",
+            "company_name": "XYZ Corp",
+            "price": 12.34,
+            "day_change_percent": -9.87,
+            "volume": 8_000_000,
+            "day_prices": [14.0, 12.34],
+        }
+    ]
+    mock_screen.assert_called_once_with("day_losers", count=6)
+
+
+@patch("core.tools.yf.screen")
+def test_get_top_losers_respects_limit(mock_screen):
+    mock_screen.return_value = {"quotes": []}
+
+    tools.get_top_losers(limit=3)
+
+    mock_screen.assert_called_once_with("day_losers", count=3)
 
 
 def make_ctx(watchlist):

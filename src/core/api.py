@@ -28,11 +28,18 @@ from core.sse import Final, format_sse, run_agent_streaming
 from core.tools import (
     get_company_name,
     get_day_change,
+    get_day_prices,
     get_market_cap,
+    get_market_news,
+    get_most_active_tickers,
     get_news_headlines,
     get_pe_ratio,
     get_sparkline_prices,
     get_stock_price,
+    get_top_gainers,
+    get_top_losers,
+    get_trending_tickers,
+    parallel_map,
 )
 
 # Hardcoded default watchlist for v1 - real CRUD is Phase 4.
@@ -77,6 +84,7 @@ def _quote(ticker: str) -> dict:
         "day_change_percent": day_change["percent"],
         "day_change_abs": day_change["absolute"],
         "sparkline": get_sparkline_prices(ticker),
+        "day_prices": get_day_prices(ticker),
     }
 
 
@@ -89,7 +97,38 @@ def get_watchlist(symbols: str | None = None) -> list[dict]:
     (`^GSPC`, `^IXIC`, `^DJI`) instead of the hardcoded watchlist.
     """
     tickers = symbols.split(",") if symbols else DEFAULT_WATCHLIST
-    return [_quote(ticker) for ticker in tickers]
+    return parallel_map(_quote, tickers)
+
+
+@app.get("/news")
+def get_home_news(symbols: str | None = None, limit: int = 8) -> list[dict]:
+    """Merged recent headlines across the watchlist (or `symbols` if given), for the homepage."""
+    tickers = symbols.split(",") if symbols else DEFAULT_WATCHLIST
+    return get_market_news(tickers, limit=limit)
+
+
+@app.get("/trending")
+def get_trending(limit: int = 6) -> list[dict]:
+    """Tickers with the highest search interest right now, for the homepage's trending section."""
+    return get_trending_tickers(limit=limit)
+
+
+@app.get("/most-active")
+def get_most_active(limit: int = 6) -> list[dict]:
+    """Today's highest-trading-volume stocks, for the homepage's most active section."""
+    return get_most_active_tickers(limit=limit)
+
+
+@app.get("/gainers")
+def get_gainers(limit: int = 6) -> list[dict]:
+    """Today's biggest stock price gainers, for the homepage's top gainers section."""
+    return get_top_gainers(limit=limit)
+
+
+@app.get("/losers")
+def get_losers(limit: int = 6) -> list[dict]:
+    """Today's biggest stock price losers, for the homepage's top losers section."""
+    return get_top_losers(limit=limit)
 
 
 @app.get("/tickers/{ticker}/history")

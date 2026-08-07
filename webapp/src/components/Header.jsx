@@ -18,7 +18,6 @@ export default function Header() {
     <header className="app-header">
       <div className="app-header__inner">
         <Link to="/" className="app-header__brand">
-          <span className="app-header__brand-mark">◆</span>
           AI Stock Team
         </Link>
         <form className="app-header__search" onSubmit={handleSubmit}>

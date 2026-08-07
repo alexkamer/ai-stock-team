@@ -24,10 +24,6 @@
   letter-spacing: -0.01em;
 }
 
-.app-header__brand-mark {
-  color: var(--signal);
-}
-
 .app-header__search {
   display: flex;
   gap: 8px;

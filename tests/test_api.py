@@ -80,7 +80,156 @@ def test_get_watchlist_returns_a_quote_per_default_ticker(mock_ticker_cls):
         "day_change_percent": 1.8,
         "day_change_abs": 2.34,
         "sparkline": [128.1, 129.4, 132.45],
+        "day_prices": [128.1, 129.4, 132.45],
     }
+
+
+@patch("core.tools.yf.Ticker")
+def test_get_home_news_returns_merged_articles(mock_ticker_cls):
+    mock_ticker_cls.return_value = make_ticker(
+        info=full_info(),
+        news=[
+            {
+                "content": {
+                    "title": "Nvidia beats estimates",
+                    "canonicalUrl": {"url": "https://example.com/a"},
+                    "provider": {"displayName": "Reuters"},
+                    "pubDate": "2026-08-07T12:00:00Z",
+                }
+            }
+        ],
+    )
+
+    response = client.get("/news")
+
+    assert response.status_code == 200
+    articles = response.json()
+    assert articles == [
+        {
+            "title": "Nvidia beats estimates",
+            "publisher": "Reuters",
+            "url": "https://example.com/a",
+            "published_at": "2026-08-07T12:00:00Z",
+            "thumbnail": None,
+        }
+    ]
+
+
+@patch("core.tools.yf.Ticker")
+@patch("core.tools.requests.get")
+def test_get_trending_returns_search_trending_tickers(mock_get, mock_ticker_cls):
+    mock_get.return_value.json.return_value = {"finance": {"result": [{"quotes": [{"symbol": "NVDA"}]}]}}
+    mock_ticker_cls.return_value = make_ticker(
+        info={"currentPrice": 219.78, "longName": "NVIDIA Corporation", "regularMarketChangePercent": 0.26},
+        history=pd.DataFrame({"Close": [217.0, 219.78]}),
+    )
+
+    response = client.get("/trending")
+
+    assert response.status_code == 200
+    assert response.json() == [
+        {
+            "ticker": "NVDA",
+            "company_name": "NVIDIA Corporation",
+            "price": 219.78,
+            "day_change_percent": 0.26,
+            "volume": None,
+            "day_prices": [217.0, 219.78],
+        }
+    ]
+
+
+@patch("core.tools.yf.Ticker")
+@patch("core.tools.yf.screen")
+def test_get_most_active_returns_active_tickers(mock_screen, mock_ticker_cls):
+    mock_screen.return_value = {
+        "quotes": [
+            {
+                "symbol": "NVDA",
+                "longName": "NVIDIA Corporation",
+                "regularMarketPrice": 219.78,
+                "regularMarketChangePercent": 0.26,
+                "regularMarketVolume": 5_000_000,
+            }
+        ]
+    }
+    mock_ticker_cls.return_value = make_ticker(history=pd.DataFrame({"Close": [217.0, 219.78]}))
+
+    response = client.get("/most-active")
+
+    assert response.status_code == 200
+    assert response.json() == [
+        {
+            "ticker": "NVDA",
+            "company_name": "NVIDIA Corporation",
+            "price": 219.78,
+            "day_change_percent": 0.26,
+            "volume": 5_000_000,
+            "day_prices": [217.0, 219.78],
+        }
+    ]
+
+
+@patch("core.tools.yf.Ticker")
+@patch("core.tools.yf.screen")
+def test_get_gainers_returns_top_gainers(mock_screen, mock_ticker_cls):
+    mock_screen.return_value = {
+        "quotes": [
+            {
+                "symbol": "SPCX",
+                "longName": "Space Exploration Technologies Corp.",
+                "regularMarketPrice": 131.55,
+                "regularMarketChangePercent": 14.47,
+                "regularMarketVolume": 210_927_255,
+            }
+        ]
+    }
+    mock_ticker_cls.return_value = make_ticker(history=pd.DataFrame({"Close": [120.0, 131.55]}))
+
+    response = client.get("/gainers")
+
+    assert response.status_code == 200
+    assert response.json() == [
+        {
+            "ticker": "SPCX",
+            "company_name": "Space Exploration Technologies Corp.",
+            "price": 131.55,
+            "day_change_percent": 14.47,
+            "volume": 210_927_255,
+            "day_prices": [120.0, 131.55],
+        }
+    ]
+
+
+@patch("core.tools.yf.Ticker")
+@patch("core.tools.yf.screen")
+def test_get_losers_returns_top_losers(mock_screen, mock_ticker_cls):
+    mock_screen.return_value = {
+        "quotes": [
+            {
+                "symbol": "XYZ",
+                "longName": "XYZ Corp",
+                "regularMarketPrice": 12.34,
+                "regularMarketChangePercent": -9.87,
+                "regularMarketVolume": 8_000_000,
+            }
+        ]
+    }
+    mock_ticker_cls.return_value = make_ticker(history=pd.DataFrame({"Close": [14.0, 12.34]}))
+
+    response = client.get("/losers")
+
+    assert response.status_code == 200
+    assert response.json() == [
+        {
+            "ticker": "XYZ",
+            "company_name": "XYZ Corp",
+            "price": 12.34,
+            "day_change_percent": -9.87,
+            "volume": 8_000_000,
+            "day_prices": [14.0, 12.34],
+        }
+    ]
 
 
 @patch("core.tools.yf.Ticker")

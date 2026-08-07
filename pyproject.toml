@@ -7,6 +7,7 @@ requires-python = ">=3.12"
 dependencies = [
     "pydantic-ai-slim[bedrock]>=2.19.0",
     "pyyaml>=6.0.3",
+    "requests>=2.34.2",
     "yfinance>=1.5.2",
 ]
 

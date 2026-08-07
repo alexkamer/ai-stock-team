@@ -17,7 +17,7 @@
 .market-strip__track {
   display: flex;
   gap: 28px;
-  padding: 12px 4px;
+  padding: 12px 4px 12px 20px;
   overflow-x: auto;
   scrollbar-width: none;
   flex: 1;
@@ -51,7 +51,7 @@
 }
 
 .market-strip__nav--right {
-  padding-right: 16px;
+  padding-right: 20px;
 }
 
 .market-strip__nav:hover:not(:disabled) {
@@ -102,6 +102,25 @@
   color: var(--critical);
 }
 
+.dashboard__columns {
+  display: flex;
+  gap: 24px;
+  align-items: flex-start;
+}
+
+.dashboard__section--news {
+  flex: 1;
+  min-width: 0;
+}
+
+.dashboard__side {
+  flex: 0 0 33%;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  min-width: 280px;
+}
+
 .dashboard__section {
   display: flex;
   flex-direction: column;
@@ -116,11 +135,6 @@
 
 .dashboard__section-head h2 {
   font-size: 18px;
-}
-
-.dashboard__section-count {
-  color: var(--text-muted);
-  font-size: 12px;
 }
 
 .change-badge {
@@ -151,33 +165,21 @@
   overflow: hidden;
 }
 
-.watchlist-table__head,
 .watchlist-row {
   display: grid;
-  grid-template-columns: 1fr 100px 110px 120px;
+  grid-template-columns: 1fr 64px 76px;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
   padding: 12px 16px;
 }
 
-.watchlist-table__head {
-  border-bottom: 1px solid var(--border);
-  font-family: var(--mono);
-  font-size: 11px;
-  font-weight: 500;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: var(--text-muted);
-}
-
-.watchlist-table__col-price,
-.watchlist-table__col-change {
+.watchlist-table__col-price {
   text-align: right;
 }
 
 .watchlist-table__col-chart {
   display: flex;
-  justify-content: flex-end;
+  justify-content: center;
 }
 
 .watchlist-row {
@@ -211,6 +213,29 @@
   font-size: 13px;
 }
 
+.watchlist-row--empty {
+  display: block;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+/* Market Movers card: labeled ticker groups (Trending, Top gainers, Top
+   losers) sharing one card, separated by a label divider instead of
+   several cards. */
+.ticker-group:not(:first-of-type) {
+  border-top: 1px solid var(--border);
+}
+
+.ticker-group__label {
+  display: block;
+  padding: 14px 16px 8px;
+  font-family: var(--display);
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--text-primary);
+}
+
 .watchlist-row__name {
   display: flex;
   flex-direction: column;
@@ -233,6 +258,13 @@
 }
 
 .watchlist-table__col-price {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 3px;
+}
+
+.watchlist-row__price {
   font-weight: 600;
   font-size: 14px;
 }
@@ -263,13 +295,20 @@
   font-size: 13px;
 }
 
-@media (max-width: 640px) {
-  .watchlist-table__head,
-  .watchlist-row {
-    grid-template-columns: 1fr 80px 90px;
+@media (max-width: 900px) {
+  .dashboard__columns {
+    flex-direction: column;
   }
 
-  .watchlist-table__col-chart {
-    display: none;
+  .dashboard__side {
+    flex: 1 1 auto;
+    width: 100%;
+    min-width: 0;
+  }
+}
+
+@media (max-width: 640px) {
+  .watchlist-row {
+    grid-template-columns: 1fr 70px 70px;
   }
 }
