@@ -1,0 +1,129 @@
+.ticker-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.ticker-detail__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.ticker-detail__header .eyebrow {
+  margin-bottom: 4px;
+}
+
+.ticker-detail__header h1 {
+  font-size: 24px;
+}
+
+.ticker-detail__price-block {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.ticker-detail__price {
+  font-size: 30px;
+  font-weight: 700;
+}
+
+.ticker-detail__stats {
+  display: flex;
+  gap: 12px;
+}
+
+.ticker-detail__stat {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 140px;
+}
+
+.ticker-detail__stat-label {
+  font-size: 11px;
+  font-family: var(--mono);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.ticker-detail__stat-value {
+  font-size: 17px;
+  font-weight: 600;
+}
+
+.ticker-detail__stat-value--good {
+  color: var(--good);
+}
+
+.ticker-detail__stat-value--bad {
+  color: var(--critical);
+}
+
+.ticker-detail__pills {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.ticker-detail__summary {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.ticker-detail__summary-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.ticker-detail__summary-head .eyebrow {
+  margin-bottom: 0;
+}
+
+.ticker-detail__summary p {
+  color: var(--text-secondary);
+  line-height: 1.6;
+  margin: 0;
+}
+
+.sentiment-badge {
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.sentiment-badge--bullish {
+  background: var(--good-bg);
+  color: var(--good);
+}
+
+.sentiment-badge--bearish {
+  background: var(--critical-bg);
+  color: var(--critical);
+}
+
+.sentiment-badge--neutral {
+  background: var(--surface-2);
+  color: var(--text-secondary);
+}
+
+.ticker-detail__news .eyebrow {
+  margin-bottom: 10px;
+}
+
+.ticker-detail__news ul {
+  margin: 0;
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 14px;
+  color: var(--text-secondary);
+}

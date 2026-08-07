@@ -1,0 +1,27 @@
+# Connection: which model, via which provider/region.
+# region_name/profile_name/etc. are BedrockProvider args - only needed if you're
+# not relying on the AWS_* env vars already set in .zshrc (bearer token + region).
+provider:
+  region_name: us-east-2
+
+model:
+  name: global.anthropic.claude-sonnet-5
+
+# Passed as ModelSettings to the Agent - these tune *how* the model generates,
+# as opposed to provider/model above which control *which* model you're talking to.
+# Anything omitted here falls back to the API's own default (usually unset/off).
+model_settings:
+  max_tokens: 1024        # hard cap on output length - raise for long-form answers
+  # temperature: 0.7       # deprecated/rejected by claude-sonnet-5 on Bedrock - leave unset for this model
+  # top_p: 1.0             # nucleus sampling alt to temperature - usually leave one of the two alone
+  # top_k: null            # Anthropic/Bedrock-specific - restricts sampling to top K tokens
+  # timeout: 60            # seconds before the request is aborted
+  # parallel_tool_calls: true
+  # seed: null             # best-effort determinism, not guaranteed
+  # stop_sequences: []
+
+# Agent-level behavior (not model params) - system_prompt sets persona/instructions,
+# retries controls how many times pydantic-ai retries on a validation failure.
+agent:
+  system_prompt: null
+  retries: 1

@@ -1,0 +1,48 @@
+.price-chart {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.price-chart__periods {
+  display: flex;
+  gap: 6px;
+  align-self: flex-end;
+}
+
+.price-chart__period-btn {
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.price-chart__period-btn--active {
+  background: var(--signal-bg);
+  border-color: var(--signal-border);
+  color: var(--signal);
+  font-weight: 600;
+}
+
+.price-chart__loading {
+  height: 220px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.price-chart svg {
+  cursor: crosshair;
+}
+
+.price-chart__tooltip {
+  align-self: flex-start;
+  font-size: 13px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}

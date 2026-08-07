@@ -1,0 +1,69 @@
+.app-header {
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-1);
+}
+
+.app-header__inner {
+  width: 1080px;
+  max-width: 100%;
+  margin: 0 auto;
+  padding: 16px 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.app-header__brand {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  font-family: var(--display);
+  font-weight: 700;
+  font-size: 17px;
+  letter-spacing: -0.01em;
+}
+
+.app-header__brand-mark {
+  color: var(--signal);
+}
+
+.app-header__search {
+  display: flex;
+  gap: 8px;
+}
+
+.app-header__search input {
+  width: 220px;
+  padding: 7px 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  background: var(--paper);
+  color: var(--text-primary);
+  font-family: var(--mono);
+  font-size: 13px;
+}
+
+.app-header__search input::placeholder {
+  font-family: var(--sans);
+}
+
+.app-header__search input:focus {
+  outline: 2px solid var(--signal);
+  outline-offset: 1px;
+}
+
+.app-header__search button {
+  padding: 7px 16px;
+  border: none;
+  border-radius: 6px;
+  background: var(--signal);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.app-header__search button:hover {
+  opacity: 0.88;
+}

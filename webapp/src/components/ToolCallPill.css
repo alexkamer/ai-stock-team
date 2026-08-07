@@ -1,0 +1,32 @@
+.tool-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 13px;
+  background: var(--signal-bg);
+  color: var(--text-secondary);
+  border: 1px solid var(--signal-border);
+}
+
+.tool-pill--done {
+  opacity: 0.6;
+}
+
+.tool-pill__spinner {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--signal);
+  animation: tool-pill-pulse 1s ease-in-out infinite;
+}
+
+.tool-pill--done .tool-pill__spinner {
+  animation: none;
+}
+
+@keyframes tool-pill-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.4; transform: scale(0.7); }
+}

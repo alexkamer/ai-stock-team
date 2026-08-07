@@ -1,0 +1,275 @@
+.dashboard {
+  display: flex;
+  flex-direction: column;
+  gap: 32px;
+}
+
+/* Market strip: horizontal scroll on narrow screens, like Yahoo Finance's
+   ticker rail - a fixed set of macro instruments, not the user's watchlist. */
+.market-strip {
+  display: flex;
+  align-items: stretch;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  margin: 0 -20px;
+}
+
+.market-strip__track {
+  display: flex;
+  gap: 28px;
+  padding: 12px 4px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  flex: 1;
+  min-width: 0;
+}
+
+.market-strip__track::-webkit-scrollbar {
+  display: none;
+}
+
+.market-strip__nav-group {
+  flex: 0 0 auto;
+  display: flex;
+  border-left: 1px solid var(--border);
+}
+
+.market-strip__nav {
+  flex: 0 0 auto;
+  width: 28px;
+  border: none;
+  background: var(--surface-1);
+  color: var(--text-secondary);
+  font-size: 16px;
+  cursor: pointer;
+  transition: color 0.12s ease, opacity 0.12s ease;
+}
+
+.market-strip__nav--left {
+  border-right: 1px solid var(--border);
+  padding-right: 2px;
+}
+
+.market-strip__nav--right {
+  padding-right: 16px;
+}
+
+.market-strip__nav:hover:not(:disabled) {
+  color: var(--signal);
+}
+
+.market-strip__nav:disabled {
+  opacity: 0.25;
+  cursor: default;
+}
+
+.market-strip__item {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  white-space: nowrap;
+}
+
+.market-strip__label {
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.market-strip__price {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.market-strip__price--loading {
+  display: inline-block;
+  width: 48px;
+  height: 12px;
+  border-radius: 3px;
+  background: var(--surface-2);
+}
+
+.market-strip__change {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.market-strip__change--good {
+  color: var(--good);
+}
+
+.market-strip__change--bad {
+  color: var(--critical);
+}
+
+.dashboard__section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.dashboard__section-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+.dashboard__section-head h2 {
+  font-size: 18px;
+}
+
+.dashboard__section-count {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.change-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 8px;
+  border-radius: 5px;
+  font-size: 13px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.change-badge--good {
+  color: var(--good);
+  background: var(--good-bg);
+}
+
+.change-badge--bad {
+  color: var(--critical);
+  background: var(--critical-bg);
+}
+
+/* Watchlist as a dense quote table - ticker/name, price, change, sparkline
+   columns, aligned like a real quote board rather than a card grid. */
+.watchlist-table {
+  padding: 0;
+  overflow: hidden;
+}
+
+.watchlist-table__head,
+.watchlist-row {
+  display: grid;
+  grid-template-columns: 1fr 100px 110px 120px;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+}
+
+.watchlist-table__head {
+  border-bottom: 1px solid var(--border);
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.watchlist-table__col-price,
+.watchlist-table__col-change {
+  text-align: right;
+}
+
+.watchlist-table__col-chart {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.watchlist-row {
+  border-bottom: 1px solid var(--border);
+  transition: background 0.12s ease;
+}
+
+.watchlist-row:last-child {
+  border-bottom: none;
+}
+
+.watchlist-row:hover {
+  background: var(--surface-2);
+}
+
+.watchlist-row--loading {
+  height: 52px;
+  background: linear-gradient(90deg, var(--surface-1) 25%, var(--surface-2) 50%, var(--surface-1) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.4s infinite;
+}
+
+@keyframes shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+.watchlist-row--add {
+  color: var(--text-muted);
+  cursor: not-allowed;
+  font-size: 13px;
+}
+
+.watchlist-row__name {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.watchlist-row__ticker {
+  font-family: var(--display);
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.watchlist-row__company {
+  color: var(--text-muted);
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.watchlist-table__col-price {
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.quick-nav {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 14px;
+}
+
+.quick-nav__card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  transition: border-color 0.15s ease;
+}
+
+.quick-nav__card:hover {
+  border-color: var(--signal-border);
+}
+
+.quick-nav__card h3 {
+  font-size: 16px;
+}
+
+.quick-nav__card p {
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+@media (max-width: 640px) {
+  .watchlist-table__head,
+  .watchlist-row {
+    grid-template-columns: 1fr 80px 90px;
+  }
+
+  .watchlist-table__col-chart {
+    display: none;
+  }
+}
