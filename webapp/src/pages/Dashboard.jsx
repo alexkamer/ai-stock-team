@@ -28,10 +28,16 @@ function ChangeBadge({ percent }) {
 /** One labeled group of ticker rows inside a shared card - used for
  * Trending, Most Active, Top Gainers, and Top Losers, which share a row
  * shape but come from different feeds. */
-function TickerGroup({ label, tickers, emptyMessage, children }) {
+function TickerGroup({ label, to, tickers, emptyMessage, children }) {
   return (
     <div className="ticker-group">
-      <span className="ticker-group__label">{label}</span>
+      {to ? (
+        <Link to={to} className="ticker-group__label ticker-group__label--link">
+          {label}
+        </Link>
+      ) : (
+        <span className="ticker-group__label">{label}</span>
+      )}
       {tickers === null
         ? Array.from({ length: 3 }, (_, i) => <div key={i} className="watchlist-row watchlist-row--loading" />)
         : tickers.length === 0
@@ -94,17 +100,17 @@ export default function Dashboard() {
     getJSON('/news')
       .then((data) => !cancelled && setNews(data))
       .catch(() => !cancelled && setNews([]))
-    getJSON('/trending')
-      .then((data) => !cancelled && setTrending(data))
+    getJSON('/markets/stocks/trending')
+      .then((data) => !cancelled && setTrending(data.items))
       .catch(() => !cancelled && setTrending([]))
-    getJSON('/most-active')
-      .then((data) => !cancelled && setMostActive(data))
+    getJSON('/markets/stocks/most-active')
+      .then((data) => !cancelled && setMostActive(data.items))
       .catch(() => !cancelled && setMostActive([]))
-    getJSON('/gainers')
-      .then((data) => !cancelled && setGainers(data))
+    getJSON('/markets/stocks/gainers')
+      .then((data) => !cancelled && setGainers(data.items))
       .catch(() => !cancelled && setGainers([]))
-    getJSON('/losers')
-      .then((data) => !cancelled && setLosers(data))
+    getJSON('/markets/stocks/losers')
+      .then((data) => !cancelled && setLosers(data.items))
       .catch(() => !cancelled && setLosers([]))
     return () => {
       cancelled = true
@@ -190,10 +196,30 @@ export default function Dashboard() {
                   <span>+ Add ticker</span>
                 </div>
               </TickerGroup>
-              <TickerGroup label="Trending" tickers={trending} emptyMessage="No trending data right now." />
-              <TickerGroup label="Most active" tickers={mostActive} emptyMessage="No active-trading data right now." />
-              <TickerGroup label="Top gainers" tickers={gainers} emptyMessage="No gainers data right now." />
-              <TickerGroup label="Top losers" tickers={losers} emptyMessage="No losers data right now." />
+              <TickerGroup
+                label="Trending"
+                to="/markets/stocks/trending"
+                tickers={trending}
+                emptyMessage="No trending data right now."
+              />
+              <TickerGroup
+                label="Most active"
+                to="/markets/stocks/most-active"
+                tickers={mostActive}
+                emptyMessage="No active-trading data right now."
+              />
+              <TickerGroup
+                label="Top gainers"
+                to="/markets/stocks/gainers"
+                tickers={gainers}
+                emptyMessage="No gainers data right now."
+              />
+              <TickerGroup
+                label="Top losers"
+                to="/markets/stocks/losers"
+                tickers={losers}
+                emptyMessage="No losers data right now."
+              />
             </div>
           </section>
 

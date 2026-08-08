@@ -8,6 +8,20 @@ from typing import TypeVar
 import requests
 import yfinance as yf
 from pydantic_ai import RunContext
+from yfinance import EquityQuery
+
+# Major US exchange codes yfinance's screener recognizes - used to keep custom
+# equity queries (e.g. top-performing) restricted to real US-listed stocks,
+# excluding OTC/pink-sheet tickers that would otherwise dominate a raw
+# percent-change sort.
+_US_MAJOR_EXCHANGES = ["NMS", "NYQ", "NGM", "ASE"]
+
+# Yahoo's predefined-screener endpoint also serves asset classes `yf.screen()`
+# doesn't wrap at all (options contracts, private companies) via scrIds that
+# aren't in yfinance's PREDEFINED_SCREENER_QUERIES - found by inspecting the
+# data-url calls Yahoo's own /markets/options and /markets/private-companies
+# pages make. Hitting it directly, same as _TRENDING_URL below.
+_PREDEFINED_SCREENER_URL = "https://query1.finance.yahoo.com/v1/finance/screener/predefined/saved"
 
 # Yahoo's own "trending" feed - symbols with the highest search interest right
 # now. This is a different signal than get_top_gainers/get_top_losers (price
@@ -218,98 +232,370 @@ def get_day_prices(ticker: str) -> list[float]:
     return [float(close) for close in history["Close"]] if not history.empty else []
 
 
-def _screen_quotes(screener_query: str, limit: int) -> list[dict]:
-    """Shared shaping logic for yfinance's predefined screeners (most_actives,
-    day_gainers, ...) - each returns the same quote fields, just pre-sorted
-    differently server-side.
+def _screen_quotes(
+    screener_query: str | EquityQuery, limit: int, offset: int = 0, **screen_kwargs
+) -> tuple[list[dict], int]:
+    """Shared shaping logic for yfinance screeners - either a predefined name
+    (most_actives, day_gainers, ...) or a custom `EquityQuery` - each returns
+    the same quote fields, just pre-sorted/filtered differently.
+
+    yfinance's `count` param is only honored for predefined queries; custom
+    `EquityQuery`/`FundQuery`/`ETFQuery` objects need `size` instead. Both
+    accept `offset`, so pagination is a real remote cursor into Yahoo's
+    result set, not a local slice of one big fetch - `total` (also from
+    Yahoo) tells the caller how many pages exist.
+
+    Over-fetches (`limit * 2`, offset unchanged) since some returned quotes
+    get filtered out below for missing symbol/price - without the padding,
+    a page would silently return fewer than `limit` tickers instead of
+    backfilling from later in the same page.
     """
-    result = yf.screen(screener_query, count=limit)
+    fetch_size = limit * 2
+    limit_kwarg = {"size": fetch_size} if isinstance(screener_query, EquityQuery) else {"count": fetch_size}
+    result = yf.screen(screener_query, offset=offset, **limit_kwarg, **screen_kwargs)
     filtered = [
         quote
         for quote in result.get("quotes", [])
         if quote.get("symbol") and quote.get("regularMarketPrice") is not None
-    ]
+    ][:limit]
     day_prices_by_symbol = dict(
         zip(
             [q["symbol"] for q in filtered],
             parallel_map(get_day_prices, [q["symbol"] for q in filtered]),
         )
     )
-    return [
+    items = [
         {
             "ticker": quote["symbol"],
             "company_name": quote.get("longName") or quote.get("shortName") or quote["symbol"],
             "price": float(quote["regularMarketPrice"]),
+            "day_change_abs": quote.get("regularMarketChange"),
             "day_change_percent": float(quote.get("regularMarketChangePercent", 0.0)),
+            "fifty_two_week_change_percent": quote.get("fiftyTwoWeekChangePercent"),
+            "fifty_two_week_range": quote.get("fiftyTwoWeekRange"),
             "volume": quote.get("regularMarketVolume"),
+            "avg_volume_3m": quote.get("averageDailyVolume3Month"),
+            "market_cap": quote.get("marketCap"),
+            "pe_ratio_ttm": quote.get("trailingPE"),
             "day_prices": day_prices_by_symbol[quote["symbol"]],
         }
         for quote in filtered
     ]
+    return items, result.get("total", len(items))
 
 
-def get_trending_tickers(limit: int = 6) -> list[dict]:
+def get_trending_tickers(limit: int = 6, offset: int = 0) -> tuple[list[dict], int]:
     """Look up tickers with the highest search interest right now, for a
     "trending" feed. Distinct from most-active (trading volume) or top
     gainers/losers (price movement) - this reflects what people are looking
     up, which can lead or lag the other signals.
 
+    Yahoo's trending endpoint mixes in crypto, ETFs, mutual funds, and
+    indices alongside stocks, so results are filtered to
+    `quoteType == "EQUITY"` to keep this a stocks-only screen - before the
+    per-symbol day-chart lookup, so non-equities never trigger a wasted
+    "possibly delisted" history fetch.
+
+    Unlike `_screen_quotes`'s screens, Yahoo's trending endpoint ignores any
+    offset/start param and always returns its full ranked list (capped
+    around 150-180) in one response - so pagination here is a local slice
+    of that one fetched pool rather than a fresh remote page per call.
+
     Args:
         limit: Maximum number of tickers to return.
+        offset: How many equities (post-filtering) to skip before `limit`.
     """
     response = requests.get(
-        _TRENDING_URL, params={"count": limit}, headers={"User-Agent": "Mozilla/5.0"}, timeout=10
+        _TRENDING_URL, params={"count": 200}, headers={"User-Agent": "Mozilla/5.0"}, timeout=10
     )
     response.raise_for_status()
     results = response.json().get("finance", {}).get("result", [])
     symbols = [q["symbol"] for q in (results[0]["quotes"] if results else []) if q.get("symbol")]
 
     infos = parallel_map(_get_info, symbols)
-    day_prices = parallel_map(get_day_prices, symbols)
+    equities = [
+        (symbol, info)
+        for symbol, info in zip(symbols, infos)
+        if info.get("quoteType") == "EQUITY" and (info.get("currentPrice") or info.get("regularMarketPrice"))
+    ]
+    total = len(equities)
+    page = equities[offset : offset + limit]
+    day_prices = parallel_map(get_day_prices, [symbol for symbol, _ in page])
 
     tickers = []
-    for symbol, info, prices in zip(symbols, infos, day_prices):
+    for (symbol, info), prices in zip(page, day_prices):
         price = info.get("currentPrice") or info.get("regularMarketPrice")
-        if price is None:
-            continue
         tickers.append(
             {
                 "ticker": symbol,
                 "company_name": info.get("longName") or info.get("shortName") or symbol,
                 "price": float(price),
+                "day_change_abs": info.get("regularMarketChange"),
                 "day_change_percent": float(info.get("regularMarketChangePercent", 0.0)),
+                "fifty_two_week_change_percent": (
+                    info["52WeekChange"] * 100 if info.get("52WeekChange") is not None else None
+                ),
+                "fifty_two_week_range": info.get("fiftyTwoWeekRange"),
                 "volume": info.get("regularMarketVolume"),
+                "avg_volume_3m": info.get("averageDailyVolume3Month"),
+                "market_cap": info.get("marketCap"),
+                "pe_ratio_ttm": info.get("trailingPE"),
                 "day_prices": prices,
             }
         )
-    return tickers
+    return tickers, total
 
 
-def get_most_active_tickers(limit: int = 6) -> list[dict]:
+def get_most_active_tickers(limit: int = 6, offset: int = 0) -> tuple[list[dict], int]:
     """Look up today's highest-trading-volume stocks, for a "most active" feed.
 
     Args:
         limit: Maximum number of tickers to return.
+        offset: How many tickers to skip before `limit`, for pagination.
     """
-    return _screen_quotes("most_actives", limit)
+    return _screen_quotes("most_actives", limit, offset=offset)
 
 
-def get_top_gainers(limit: int = 6) -> list[dict]:
+def get_top_gainers(limit: int = 6, offset: int = 0) -> tuple[list[dict], int]:
     """Look up today's biggest stock price gainers, for a "top gainers" feed.
 
     Args:
         limit: Maximum number of tickers to return.
+        offset: How many tickers to skip before `limit`, for pagination.
     """
-    return _screen_quotes("day_gainers", limit)
+    return _screen_quotes("day_gainers", limit, offset=offset)
 
 
-def get_top_losers(limit: int = 6) -> list[dict]:
+def get_top_losers(limit: int = 6, offset: int = 0) -> tuple[list[dict], int]:
     """Look up today's biggest stock price losers, for a "top losers" feed.
 
     Args:
         limit: Maximum number of tickers to return.
+        offset: How many tickers to skip before `limit`, for pagination.
     """
-    return _screen_quotes("day_losers", limit)
+    return _screen_quotes("day_losers", limit, offset=offset)
+
+
+def get_top_performing_tickers(limit: int = 6, offset: int = 0) -> tuple[list[dict], int]:
+    """Look up US stocks with the highest 52-week price % change, for a "top
+    performing" feed - a longer-horizon view than today's gainers/losers.
+    Restricted to major US exchanges and a market-cap floor so thinly-traded
+    OTC tickers (which can show enormous but meaningless % swings) don't
+    dominate the list.
+
+    Args:
+        limit: Maximum number of tickers to return.
+        offset: How many tickers to skip before `limit`, for pagination.
+    """
+    query = EquityQuery(
+        "and",
+        [
+            EquityQuery("is-in", ["exchange", *_US_MAJOR_EXCHANGES]),
+            EquityQuery("gte", ["intradaymarketcap", 2_000_000_000]),
+        ],
+    )
+    return _screen_quotes(query, limit, offset=offset, sortField="fiftytwowkpercentchange", sortAsc=False)
+
+
+def get_top_etfs(limit: int = 6, offset: int = 0) -> tuple[list[dict], int]:
+    """Look up today's top-performing US ETFs, for a "top ETFs" feed.
+
+    Args:
+        limit: Maximum number of tickers to return.
+        offset: How many tickers to skip before `limit`, for pagination.
+    """
+    return _screen_quotes("top_etfs_us", limit, offset=offset)
+
+
+def _predefined_screen(scr_id: str, limit: int, fields: list[str]) -> list[dict]:
+    """Call Yahoo's predefined-screener endpoint directly for scrIds that
+    yfinance's `yf.screen()` doesn't know about (options, private companies).
+    Returns the raw `records` list, each value unwrapped from Yahoo's
+    `{"raw": ..., "fmt": ...}` shape down to its plain `raw` value.
+    """
+    response = requests.get(
+        _PREDEFINED_SCREENER_URL,
+        params={
+            "count": limit,
+            "scrIds": scr_id,
+            "start": 0,
+            "useRecordsResponse": "true",
+            "fields": ",".join(fields),
+        },
+        headers={"User-Agent": "Mozilla/5.0"},
+        timeout=10,
+    )
+    response.raise_for_status()
+    results = response.json().get("finance", {}).get("result") or []
+    records = results[0].get("records", []) if results else []
+    return [
+        {key: (value.get("raw") if isinstance(value, dict) else value) for key, value in record.items()}
+        for record in records
+    ]
+
+
+def get_most_active_options(limit: int = 6) -> list[dict]:
+    """Look up today's highest-trading-volume options contracts across all
+    underlyings, for a "most active options" feed.
+
+    Args:
+        limit: Maximum number of contracts to return.
+    """
+    records = _predefined_screen(
+        "MOST_ACTIVES_OPTIONS",
+        limit,
+        [
+            "ticker",
+            "companyName",
+            "underlyingSymbol",
+            "strike",
+            "expireDate",
+            "regularMarketPrice",
+            "regularMarketChangePercent",
+            "regularMarketVolume",
+            "openInterest",
+            "impliedVolatility",
+        ],
+    )
+    return [
+        {
+            "ticker": r["ticker"],
+            "company_name": r.get("companyName", r["ticker"]),
+            "underlying_symbol": r.get("underlyingSymbol"),
+            "strike": r.get("strike"),
+            "expire_date": r.get("expireDate"),
+            "price": float(r.get("regularMarketPrice") or 0.0),
+            "day_change_percent": float(r.get("regularMarketChangePercent") or 0.0),
+            "volume": r.get("regularMarketVolume"),
+            "open_interest": r.get("openInterest"),
+            "implied_volatility": r.get("impliedVolatility"),
+        }
+        for r in records
+    ]
+
+
+def get_highest_open_interest_options(limit: int = 6) -> list[dict]:
+    """Look up today's highest-open-interest options contracts across all
+    underlyings, for a "highest open interest" feed - a positioning signal
+    distinct from get_most_active_options' trading-volume signal.
+
+    Args:
+        limit: Maximum number of contracts to return.
+    """
+    records = _predefined_screen(
+        "TOP_OPTIONS_OPEN_INTEREST",
+        limit,
+        [
+            "ticker",
+            "companyName",
+            "underlyingSymbol",
+            "strike",
+            "expireDate",
+            "regularMarketPrice",
+            "regularMarketChangePercent",
+            "regularMarketVolume",
+            "openInterest",
+            "impliedVolatility",
+        ],
+    )
+    return [
+        {
+            "ticker": r["ticker"],
+            "company_name": r.get("companyName", r["ticker"]),
+            "underlying_symbol": r.get("underlyingSymbol"),
+            "strike": r.get("strike"),
+            "expire_date": r.get("expireDate"),
+            "price": float(r.get("regularMarketPrice") or 0.0),
+            "day_change_percent": float(r.get("regularMarketChangePercent") or 0.0),
+            "volume": r.get("regularMarketVolume"),
+            "open_interest": r.get("openInterest"),
+            "implied_volatility": r.get("impliedVolatility"),
+        }
+        for r in records
+    ]
+
+
+def get_highest_valuation_private_companies(limit: int = 6) -> list[dict]:
+    """Look up private companies with the highest estimated valuations
+    (Anthropic, OpenAI, SpaceX, ...), for a "private companies" feed. Yahoo
+    tracks these under synthetic `.PVT` tickers with funding-round data in
+    place of exchange-traded quotes.
+
+    Args:
+        limit: Maximum number of companies to return.
+    """
+    records = _predefined_screen(
+        "HIGHEST_VALUATION_PRIVATE_COMPANY",
+        limit,
+        [
+            "ticker",
+            "companyName",
+            "sector",
+            "regularMarketPrice",
+            "regularMarketChangePercent",
+            "fiftyTwoWeekChangePercent",
+            "latestImpliedValuation",
+            "fundingToDate",
+            "latestFundingDate",
+            "latestAmountRaised",
+            "latestShareClass",
+        ],
+    )
+    return [
+        {
+            "ticker": r["ticker"],
+            "company_name": r.get("companyName", r["ticker"]),
+            "sector": r.get("sector"),
+            "price": float(r.get("regularMarketPrice") or 0.0),
+            "day_change_percent": float(r.get("regularMarketChangePercent") or 0.0),
+            "fifty_two_week_change_percent": r.get("fiftyTwoWeekChangePercent"),
+            "implied_valuation": r.get("latestImpliedValuation"),
+            "funding_to_date": r.get("fundingToDate"),
+            "latest_funding_date": r.get("latestFundingDate"),
+            "latest_amount_raised": r.get("latestAmountRaised"),
+            "latest_share_class": r.get("latestShareClass"),
+        }
+        for r in records
+    ]
+
+
+def _five_year_change_percent(ticker: str) -> float | None:
+    history = yf.Ticker(ticker).history(period="5y", interval="1mo")
+    if history.empty or len(history) < 2:
+        return None
+    first, last = float(history["Close"].iloc[0]), float(history["Close"].iloc[-1])
+    return (last - first) / first * 100 if first else None
+
+
+def get_best_historical_performers(limit: int = 6, offset: int = 0) -> tuple[list[dict], int]:
+    """Look up US stocks with the highest 5-year price % change, for a "best
+    historical performance" feed - a longer horizon than the 52-week window
+    used by get_top_performing_tickers. yfinance has no server-side sort for
+    multi-year change, so this re-ranks a pool of 52-week top performers by
+    5-year change fetched per-ticker.
+
+    Since the re-rank happens locally (not a remote sort), the candidate
+    pool must cover `offset + limit` rather than just `limit`, and paging is
+    a slice of that one ranked pool rather than a fresh remote page - so
+    `total` reflects the pool size fetched, not every 52-week top performer
+    that exists.
+
+    Args:
+        limit: Maximum number of tickers to return.
+        offset: How many ranked tickers to skip before `limit`, for pagination.
+    """
+    pool_size = max((offset + limit) * 5, 40)
+    candidates, _ = get_top_performing_tickers(limit=pool_size)
+    tickers = [c["ticker"] for c in candidates]
+    five_year_changes = parallel_map(_five_year_change_percent, tickers)
+    for candidate, change in zip(candidates, five_year_changes):
+        candidate["five_year_change_percent"] = change
+    ranked = sorted(
+        (c for c in candidates if c["five_year_change_percent"] is not None),
+        key=lambda c: c["five_year_change_percent"],
+        reverse=True,
+    )
+    return ranked[offset : offset + limit], len(ranked)
 
 
 @dataclass

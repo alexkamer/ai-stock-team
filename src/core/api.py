@@ -26,21 +26,53 @@ from agents.main import get_sentiment_streaming
 from agents.stock_team import get_team_analysis
 from core.sse import Final, format_sse, run_agent_streaming
 from core.tools import (
+    get_best_historical_performers,
     get_company_name,
     get_day_change,
     get_day_prices,
+    get_highest_open_interest_options,
+    get_highest_valuation_private_companies,
     get_market_cap,
     get_market_news,
+    get_most_active_options,
     get_most_active_tickers,
     get_news_headlines,
     get_pe_ratio,
     get_sparkline_prices,
     get_stock_price,
+    get_top_etfs,
     get_top_gainers,
     get_top_losers,
+    get_top_performing_tickers,
     get_trending_tickers,
     parallel_map,
 )
+
+# Screens available under /markets/stocks/{screen} - the value is the
+# fetcher; the key is what the frontend's filter bar and route both use, so
+# adding a screen here and to STOCK_SCREENS in the frontend is the whole diff.
+STOCK_SCREENS = {
+    "most-active": get_most_active_tickers,
+    "gainers": get_top_gainers,
+    "losers": get_top_losers,
+    "top-performing": get_top_performing_tickers,
+    "trending": get_trending_tickers,
+    "best-historical": get_best_historical_performers,
+    "top-etfs": get_top_etfs,
+}
+
+# Same pattern as STOCK_SCREENS, but for asset classes that aren't stocks and
+# have their own quote shape (options contracts, private-company funding
+# data) - kept in separate registries/routes rather than forced into the
+# stock table's shape.
+OPTIONS_SCREENS = {
+    "most-active": get_most_active_options,
+    "highest-open-interest": get_highest_open_interest_options,
+}
+
+PRIVATE_COMPANY_SCREENS = {
+    "highest-valuation": get_highest_valuation_private_companies,
+}
 
 # Hardcoded default watchlist for v1 - real CRUD is Phase 4.
 DEFAULT_WATCHLIST = ["NVDA", "AAPL", "MSFT", "GOOGL", "AMZN"]
@@ -107,28 +139,46 @@ def get_home_news(symbols: str | None = None, limit: int = 8) -> list[dict]:
     return get_market_news(tickers, limit=limit)
 
 
-@app.get("/trending")
-def get_trending(limit: int = 6) -> list[dict]:
-    """Tickers with the highest search interest right now, for the homepage's trending section."""
-    return get_trending_tickers(limit=limit)
+def _screen_or_404(registry: dict, screen: str, limit: int) -> list[dict]:
+    fetcher = registry.get(screen)
+    if fetcher is None:
+        raise HTTPException(status_code=404, detail=f"Unknown screen: {screen}")
+    return fetcher(limit=limit)
 
 
-@app.get("/most-active")
-def get_most_active(limit: int = 6) -> list[dict]:
-    """Today's highest-trading-volume stocks, for the homepage's most active section."""
-    return get_most_active_tickers(limit=limit)
+@app.get("/markets/stocks/{screen}")
+def get_stock_screen(screen: str, limit: int = 6, offset: int = 0) -> dict:
+    """One of STOCK_SCREENS' stock feeds (most-active, gainers, losers,
+    top-performing, trending, best-historical, top-etfs), for the homepage's
+    movers section and the dedicated /markets/stocks/{screen} page.
+
+    Paginated (unlike the sibling /markets/options and /markets/private-companies
+    endpoints, which return a plain list) since these feeds route through
+    yfinance's screener, which supports a real `offset` cursor and a `total`
+    count of matching results - `{"items": [...], "total": N}` lets the
+    frontend build page controls instead of only ever fetching page one.
+    """
+    fetcher = STOCK_SCREENS.get(screen)
+    if fetcher is None:
+        raise HTTPException(status_code=404, detail=f"Unknown screen: {screen}")
+    items, total = fetcher(limit=limit, offset=offset)
+    return {"items": items, "total": total}
 
 
-@app.get("/gainers")
-def get_gainers(limit: int = 6) -> list[dict]:
-    """Today's biggest stock price gainers, for the homepage's top gainers section."""
-    return get_top_gainers(limit=limit)
+@app.get("/markets/options/{screen}")
+def get_options_screen(screen: str, limit: int = 6) -> list[dict]:
+    """One of OPTIONS_SCREENS' options-contract feeds (most-active,
+    highest-open-interest), for the dedicated /markets/options/{screen} page.
+    """
+    return _screen_or_404(OPTIONS_SCREENS, screen, limit)
 
 
-@app.get("/losers")
-def get_losers(limit: int = 6) -> list[dict]:
-    """Today's biggest stock price losers, for the homepage's top losers section."""
-    return get_top_losers(limit=limit)
+@app.get("/markets/private-companies/{screen}")
+def get_private_company_screen(screen: str, limit: int = 6) -> list[dict]:
+    """One of PRIVATE_COMPANY_SCREENS' private-company feeds
+    (highest-valuation), for the dedicated /markets/private-companies/{screen} page.
+    """
+    return _screen_or_404(PRIVATE_COMPANY_SCREENS, screen, limit)
 
 
 @app.get("/tickers/{ticker}/history")

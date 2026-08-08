@@ -236,6 +236,14 @@
   color: var(--text-primary);
 }
 
+.ticker-group__label--link {
+  transition: color 0.12s ease;
+}
+
+.ticker-group__label--link:hover {
+  color: var(--signal);
+}
+
 .watchlist-row__name {
   display: flex;
   flex-direction: column;
