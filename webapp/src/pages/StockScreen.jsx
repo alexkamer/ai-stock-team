@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { getJSON } from '../api/client'
+import Sparkline from '../components/Sparkline'
 import './StockScreen.css'
 
 // Screens available under /markets/stocks/:screen - key must match a name in
@@ -392,8 +393,13 @@ export default function StockScreen() {
                 return (
                   <Link key={t.ticker} to={`/tickers/${t.ticker}`} className="stock-screen__row stock-screen__row--full">
                     <span className="watchlist-row__ticker">{t.ticker}</span>
-                    <span className="watchlist-row__company">{t.company_name}</span>
-                    <span className="stock-screen__col-num num">${t.price.toFixed(2)}</span>
+                    <span className="watchlist-row__company">
+                      <span className="watchlist-row__company-name">{t.company_name}</span>
+                      <Sparkline values={t.day_prices} width={64} height={24} positive={changePositive} />
+                    </span>
+                    <span className="stock-screen__col-num stock-screen__col-price num">
+                      ${t.price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </span>
                     <span className={`stock-screen__col-num num ${changePositive ? 'text-good' : 'text-critical'}`}>
                       {t.day_change_abs != null
                         ? `${changePositive ? '+' : ''}${t.day_change_abs.toFixed(2)}`

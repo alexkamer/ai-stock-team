@@ -342,13 +342,37 @@
 
 .stock-screen__table-head--full,
 .stock-screen__row--full {
-  grid-template-columns: 90px minmax(180px, 1.4fr) 90px 90px 100px 110px 110px 110px 90px 110px 200px;
-  min-width: 1510px;
+  grid-template-columns: 90px minmax(220px, 1.4fr) 110px 90px 100px 110px 110px 110px 90px 110px 200px;
+  min-width: 1530px;
 }
 
 .stock-screen__table-head--full span,
 .stock-screen__row--full .stock-screen__col-num {
   white-space: nowrap;
+}
+
+.stock-screen__row--full .watchlist-row__company {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  overflow: hidden;
+  min-width: 0;
+}
+
+.stock-screen__row--full .watchlist-row__company-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.stock-screen__row--full .watchlist-row__company svg {
+  flex-shrink: 0;
+}
+
+.stock-screen__col-price {
+  padding-left: 12px;
 }
 
 .stock-screen__col-num {

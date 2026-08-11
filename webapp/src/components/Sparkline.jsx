@@ -23,10 +23,21 @@ export default function Sparkline({ values, width = 100, height = 32, positive }
   const lineStr = points.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join(' ')
   const areaStr = `0,${height} ${lineStr} ${width.toFixed(1)},${height}`
   const color = positive ? 'var(--good)' : 'var(--critical)'
+  const openY = height - ((values[0] - min) / range) * height
 
   return (
     <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Price trend">
       <polygon points={areaStr} fill={color} opacity="0.08" />
+      <line
+        x1="0"
+        y1={openY.toFixed(1)}
+        x2={width}
+        y2={openY.toFixed(1)}
+        stroke="var(--text-secondary)"
+        strokeWidth="1"
+        strokeDasharray="2 2"
+        opacity="0.5"
+      />
       <polyline
         points={lineStr}
         fill="none"
