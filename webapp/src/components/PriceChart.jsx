@@ -122,8 +122,12 @@ export default function PriceChart({
   const volumeBottom = volumeTop + volumeHeight
 
   const scaleValues = hasData ? (compareMode ? [...primaryPct, ...benchmarkPct] : plotSeries) : [0]
-  const min = hasData ? Math.min(...scaleValues) : 0
-  const max = hasData ? Math.max(...scaleValues) : 1
+  const rawMin = hasData ? Math.min(...scaleValues) : 0
+  const rawMax = hasData ? Math.max(...scaleValues) : 1
+  const rawRange = rawMax - rawMin || 1
+  const AXIS_PADDING_RATIO = 0.08
+  const min = rawMin - rawRange * AXIS_PADDING_RATIO
+  const max = rawMax + rawRange * AXIS_PADDING_RATIO
   const range = max - min || 1
   const stepX = hasData ? plotWidth / (prices.length - 1) : 0
 
