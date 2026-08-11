@@ -101,6 +101,28 @@ def get_pe_ratio(ticker: str) -> float:
     return float(pe_ratio)
 
 
+def get_ticker_stats(ticker: str) -> dict:
+    """Look up 52-week range, trading volume, dividend yield, sector, and
+    logo domain for a stock ticker, for the ticker detail page's hero and
+    expanded stat grid.
+
+    Args:
+        ticker: Stock ticker symbol, e.g. 'NVDA'.
+    """
+    info = _get_info(ticker)
+    website = info.get("website") or ""
+    logo_domain = website.split("//")[-1].split("/")[0].removeprefix("www.") or None
+    return {
+        "fifty_two_week_low": info.get("fiftyTwoWeekLow"),
+        "fifty_two_week_high": info.get("fiftyTwoWeekHigh"),
+        "volume": info.get("regularMarketVolume"),
+        "avg_volume_3m": info.get("averageDailyVolume3Month"),
+        "dividend_yield": info.get("dividendYield"),
+        "sector": info.get("sector"),
+        "logo_domain": logo_domain,
+    }
+
+
 def get_company_name(ticker: str) -> str:
     """Look up the company name for a stock ticker.
 
@@ -168,6 +190,25 @@ def get_sparkline_prices(ticker: str, period: str = "1mo") -> list[float]:
     if history.empty:
         raise ValueError(f"No price history found for ticker {ticker!r}")
     return [float(close) for close in history["Close"]]
+
+
+def get_sparkline(ticker: str, period: str = "1mo") -> dict:
+    """Look up closing prices and their timestamps for a stock ticker over a
+    period, for the ticker detail page's chart axis labels.
+
+    Args:
+        ticker: Stock ticker symbol, e.g. 'NVDA'.
+        period: How far back to look, e.g. '1d', '5d', '1mo', '6mo', '1y'.
+    """
+    history = yf.Ticker(ticker).history(period=period)
+    if history.empty:
+        raise ValueError(f"No price history found for ticker {ticker!r}")
+    is_intraday = period in ("1d", "5d")
+    fmt = "%-I:%M %p" if is_intraday else "%b %-d"
+    return {
+        "prices": [float(close) for close in history["Close"]],
+        "labels": [ts.strftime(fmt) for ts in history.index],
+    }
 
 
 def get_news_headlines(ticker: str, limit: int = 5) -> list[str]:

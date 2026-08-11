@@ -103,7 +103,7 @@ h1, h2, h3 {
 .card {
   background: var(--surface-1);
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: 3px;
   padding: 18px;
 }
 
@@ -111,7 +111,7 @@ h1, h2, h3 {
   background: var(--critical-bg);
   border: 1px solid var(--critical);
   color: var(--critical);
-  border-radius: 8px;
+  border-radius: 3px;
   padding: 12px 16px;
   font-size: 14px;
   font-family: var(--mono);

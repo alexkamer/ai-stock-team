@@ -13,6 +13,50 @@ function SentimentBadge({ sentiment }) {
   return <span className={`sentiment-badge sentiment-badge--${sentiment}`}>{SENTIMENT_LABEL[sentiment]}</span>
 }
 
+function CompanyLogo({ domain, ticker }) {
+  const [failed, setFailed] = useState(false)
+  if (!domain || failed) {
+    return <div className="company-logo company-logo--fallback">{ticker.slice(0, 2)}</div>
+  }
+  return (
+    <img
+      className="company-logo"
+      src={`https://www.google.com/s2/favicons?domain=${domain}&sz=128`}
+      alt=""
+      onError={() => setFailed(true)}
+    />
+  )
+}
+
+function formatUpdatedAt(date) {
+  return date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', second: '2-digit' })
+}
+
+function formatCompact(n) {
+  if (n == null) return '—'
+  if (n >= 1e12) return `${(n / 1e12).toFixed(2)}T`
+  if (n >= 1e9) return `${(n / 1e9).toFixed(1)}B`
+  if (n >= 1e6) return `${(n / 1e6).toFixed(1)}M`
+  if (n >= 1e3) return `${(n / 1e3).toFixed(1)}K`
+  return `${n}`
+}
+
+function RangeBar({ low, high, value }) {
+  if (low == null || high == null || value == null || high <= low) return null
+  const pct = Math.max(0, Math.min(100, ((value - low) / (high - low)) * 100))
+  return (
+    <div className="range-bar">
+      <div className="range-bar__track">
+        <div className="range-bar__marker" style={{ left: `${pct}%` }} />
+      </div>
+      <div className="range-bar__labels">
+        <span className="num">${low.toFixed(2)}</span>
+        <span className="num">${high.toFixed(2)}</span>
+      </div>
+    </div>
+  )
+}
+
 export default function TickerDetail() {
   const { ticker } = useParams()
   const [quote, setQuote] = useState(null)
@@ -21,6 +65,8 @@ export default function TickerDetail() {
   const [error, setError] = useState(null)
   const [period, setPeriod] = useState('1mo')
   const [prices, setPrices] = useState(null)
+  const [labels, setLabels] = useState(null)
+  const [updatedAt, setUpdatedAt] = useState(null)
   const { calls, handleEvent, reset } = useToolCalls()
   const controllerRef = useRef(null)
 
@@ -41,6 +87,7 @@ export default function TickerDetail() {
           setSummary((prev) => prev + data.delta)
         } else if (eventName === 'quote') {
           setQuote(data)
+          setUpdatedAt(new Date())
         } else if (eventName === 'sentiment') {
           setSentiment(data)
         } else if (eventName === 'error') {
@@ -59,8 +106,12 @@ export default function TickerDetail() {
 
   useEffect(() => {
     setPrices(null)
+    setLabels(null)
     getJSON(`/tickers/${ticker}/history?period=${period}`)
-      .then((data) => setPrices(data.prices))
+      .then((data) => {
+        setPrices(data.prices)
+        setLabels(data.labels)
+      })
       .catch(() => {})
   }, [ticker, period])
 
@@ -70,28 +121,37 @@ export default function TickerDetail() {
 
   return (
     <div className="ticker-detail">
-      <div className="ticker-detail__header">
-        <div>
-          <span className="eyebrow">{ticker}</span>
-          <h1>{quote?.company_name ?? '···'}</h1>
-        </div>
-        {quote ? (
-          <div className="ticker-detail__price-block">
-            <span className="ticker-detail__price num">${quote.price.toFixed(2)}</span>
-            <span className={`change-badge ${positive ? 'change-badge--good' : 'change-badge--bad'}`}>
-              {positive ? '↑' : '↓'} {Math.abs(quote.day_change_percent).toFixed(2)}% (${Math.abs(quote.day_change_abs).toFixed(2)})
-            </span>
+      <div className={`ticker-detail__hero${quote ? (positive ? ' ticker-detail__hero--good' : ' ticker-detail__hero--bad') : ''}`}>
+        {updatedAt && <span className="ticker-detail__updated-at">Updated {formatUpdatedAt(updatedAt)}</span>}
+        <div className="ticker-detail__hero-main">
+          <CompanyLogo domain={quote?.logo_domain} ticker={ticker} />
+          <div className="ticker-detail__identity">
+            <div className="ticker-detail__identity-line">
+              <span className="eyebrow">{ticker}</span>
+              {quote?.sector && <span className="sector-tag">{quote.sector}</span>}
+            </div>
+            <h1>{quote?.company_name ?? '···'}</h1>
           </div>
-        ) : (
-          <span className="spinner" />
-        )}
+        </div>
+        <div className="ticker-detail__hero-side">
+          {quote ? (
+            <div className="ticker-detail__price-block">
+              <span className="ticker-detail__price num">${quote.price.toFixed(2)}</span>
+              <span className={`change-badge ${positive ? 'change-badge--good' : 'change-badge--bad'}`}>
+                {positive ? '↑' : '↓'} {Math.abs(quote.day_change_percent).toFixed(2)}% (${Math.abs(quote.day_change_abs).toFixed(2)})
+              </span>
+            </div>
+          ) : (
+            <span className="spinner" />
+          )}
+        </div>
       </div>
 
       <div className="ticker-detail__stats">
         <div className="card ticker-detail__stat">
           <span className="ticker-detail__stat-label">Market cap</span>
           <span className="ticker-detail__stat-value num">
-            {quote ? `$${(quote.market_cap / 1e9).toFixed(1)}B` : '—'}
+            {quote ? `$${formatCompact(quote.market_cap)}` : '—'}
           </span>
         </div>
         <div className="card ticker-detail__stat">
@@ -99,14 +159,31 @@ export default function TickerDetail() {
           <span className="ticker-detail__stat-value num">{quote ? quote.pe_ratio.toFixed(1) : '—'}</span>
         </div>
         <div className="card ticker-detail__stat">
-          <span className="ticker-detail__stat-label">Day change</span>
-          <span className={`ticker-detail__stat-value num ${quote ? (positive ? 'ticker-detail__stat-value--good' : 'ticker-detail__stat-value--bad') : ''}`}>
-            {quote ? `${positive ? '+' : ''}${quote.day_change_percent.toFixed(2)}%` : '—'}
+          <span className="ticker-detail__stat-label">Volume</span>
+          <span className="ticker-detail__stat-value num">
+            {quote ? formatCompact(quote.volume) : '—'}
+            {quote?.avg_volume_3m && (
+              <span className="ticker-detail__stat-sub"> / avg {formatCompact(quote.avg_volume_3m)}</span>
+            )}
           </span>
+        </div>
+        <div className="card ticker-detail__stat">
+          <span className="ticker-detail__stat-label">Dividend yield</span>
+          <span className="ticker-detail__stat-value num">
+            {quote?.dividend_yield ? `${quote.dividend_yield.toFixed(2)}%` : '—'}
+          </span>
+        </div>
+        <div className="card ticker-detail__stat ticker-detail__stat--wide">
+          <span className="ticker-detail__stat-label">52-week range</span>
+          {quote ? (
+            <RangeBar low={quote.fifty_two_week_low} high={quote.fifty_two_week_high} value={quote.price} />
+          ) : (
+            <span className="ticker-detail__stat-value num">—</span>
+          )}
         </div>
       </div>
 
-      <div className="card ticker-detail__summary">
+      <div className={`card ticker-detail__summary ticker-detail__summary--${sentiment?.sentiment ?? 'pending'}`}>
         <div className="ticker-detail__summary-head">
           <span className="eyebrow">AI sentiment read</span>
           <SentimentBadge sentiment={sentiment?.sentiment} />
@@ -122,7 +199,7 @@ export default function TickerDetail() {
       </div>
 
       <div className="card">
-        <PriceChart prices={prices} period={period} onPeriodChange={setPeriod} positive={positive} />
+        <PriceChart prices={prices} labels={labels} period={period} onPeriodChange={setPeriod} positive={positive} />
       </div>
 
       {quote?.news_headlines && (
@@ -130,7 +207,9 @@ export default function TickerDetail() {
           <span className="eyebrow">Recent news</span>
           <ul>
             {quote.news_headlines.map((headline, i) => (
-              <li key={i}>{headline}</li>
+              <li key={i} className="ticker-detail__news-row">
+                {headline}
+              </li>
             ))}
           </ul>
         </div>

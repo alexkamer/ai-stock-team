@@ -38,8 +38,10 @@ from core.tools import (
     get_most_active_tickers,
     get_news_headlines,
     get_pe_ratio,
+    get_sparkline,
     get_sparkline_prices,
     get_stock_price,
+    get_ticker_stats,
     get_top_etfs,
     get_top_gainers,
     get_top_losers,
@@ -185,7 +187,7 @@ def get_private_company_screen(screen: str, limit: int = 6) -> list[dict]:
 def get_ticker_history(ticker: str, period: str = "1mo") -> dict:
     ticker = ticker.upper()
     try:
-        return {"period": period, "prices": get_sparkline_prices(ticker, period=period)}
+        return {"period": period, **get_sparkline(ticker, period=period)}
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e)) from e
 
@@ -207,6 +209,7 @@ async def get_ticker_snapshot(ticker: str) -> StreamingResponse:
                 "pe_ratio": get_pe_ratio(ticker),
                 "news_headlines": get_news_headlines(ticker),
                 **get_day_change(ticker),
+                **get_ticker_stats(ticker),
             }
         except ValueError as e:
             yield format_sse("error", json.dumps({"detail": str(e)}))
@@ -223,6 +226,13 @@ async def get_ticker_snapshot(ticker: str) -> StreamingResponse:
                     "day_change_percent": quote["percent"],
                     "day_change_abs": quote["absolute"],
                     "news_headlines": quote["news_headlines"],
+                    "fifty_two_week_low": quote["fifty_two_week_low"],
+                    "fifty_two_week_high": quote["fifty_two_week_high"],
+                    "volume": quote["volume"],
+                    "avg_volume_3m": quote["avg_volume_3m"],
+                    "dividend_yield": quote["dividend_yield"],
+                    "sector": quote["sector"],
+                    "logo_domain": quote["logo_domain"],
                 }
             ),
         )

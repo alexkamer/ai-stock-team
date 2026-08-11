@@ -23,7 +23,7 @@
   flex: 0 0 auto;
   width: 88px;
   height: 62px;
-  border-radius: 6px;
+  border-radius: 3px;
   object-fit: cover;
   background: var(--surface-2);
 }

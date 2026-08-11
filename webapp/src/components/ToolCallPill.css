@@ -3,7 +3,7 @@
   align-items: center;
   gap: 6px;
   padding: 4px 10px;
-  border-radius: 999px;
+  border-radius: 3px;
   font-size: 13px;
   background: var(--signal-bg);
   color: var(--text-secondary);

@@ -24,6 +24,30 @@
   letter-spacing: -0.01em;
 }
 
+.app-header__nav {
+  display: flex;
+  gap: 22px;
+  margin-right: auto;
+  margin-left: 32px;
+}
+
+.app-header__nav-link {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  padding: 4px 0;
+  border-bottom: 2px solid transparent;
+}
+
+.app-header__nav-link:hover {
+  color: var(--text-primary);
+}
+
+.app-header__nav-link--active {
+  color: var(--text-primary);
+  border-bottom-color: var(--signal);
+}
+
 .app-header__search {
   display: flex;
   gap: 8px;
@@ -33,7 +57,7 @@
   width: 220px;
   padding: 7px 12px;
   border: 1px solid var(--border-strong);
-  border-radius: 6px;
+  border-radius: 3px;
   background: var(--paper);
   color: var(--text-primary);
   font-family: var(--mono);
@@ -52,7 +76,7 @@
 .app-header__search button {
   padding: 7px 16px;
   border: none;
-  border-radius: 6px;
+  border-radius: 3px;
   background: var(--signal);
   color: #fff;
   font-size: 13px;
