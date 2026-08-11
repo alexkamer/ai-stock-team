@@ -142,8 +142,16 @@ export default function PriceChart({
     : null
 
   const baseline = padTop + pricePlotHeight
-  const areaPathFor = (pts) =>
-    `M${pts[0][0]},${baseline} ` + pts.map(([x, y]) => `L${x},${y}`).join(' ') + ` L${pts[pts.length - 1][0]},${baseline} Z`
+  let prevCloseY = null
+  let prevCloseInRange = true
+  if (relativeToPrevClose) {
+    prevCloseY = padTop + pricePlotHeight * (1 - (previousClose - min) / range)
+    prevCloseInRange = previousClose >= min && previousClose <= max
+    prevCloseY = Math.max(padTop, Math.min(baseline, prevCloseY))
+  }
+
+  const areaPathFor = (pts, base = baseline) =>
+    `M${pts[0][0]},${base} ` + pts.map(([x, y]) => `L${x},${y}`).join(' ') + ` L${pts[pts.length - 1][0]},${base} Z`
   const areaPath = hasData ? areaPathFor(points) : ''
   const linePath = hasData ? pathFromPoints(points) : ''
   const benchmarkPath = compareMode ? pathFromPoints(benchmarkPoints) : ''
@@ -173,14 +181,7 @@ export default function PriceChart({
   const volBarY = (v) => volumeBottom - (v / volMax) * volumeHeight
   const volBarH = (v) => (v / volMax) * volumeHeight
 
-  const showPrevClose = hasData && !compareMode && previousClose != null && isIntraday
-  let prevCloseY = null
-  let prevCloseInRange = true
-  if (showPrevClose) {
-    prevCloseY = padTop + pricePlotHeight * (1 - (previousClose - min) / range)
-    prevCloseInRange = previousClose >= min && previousClose <= max
-    prevCloseY = Math.max(padTop, Math.min(padTop + pricePlotHeight, prevCloseY))
-  }
+  const showPrevClose = relativeToPrevClose
 
   function updateHoverFromClientX(clientX, svgEl) {
     if (!hasData) return
@@ -330,7 +331,7 @@ export default function PriceChart({
               coloredSegments.map((seg, i) => (
                 <path
                   key={i}
-                  d={areaPathFor(seg.points)}
+                  d={areaPathFor(seg.points, prevCloseY)}
                   fill={`url(#${seg.color === 'var(--good)' ? goodGradientId : criticalGradientId})`}
                 />
               ))
