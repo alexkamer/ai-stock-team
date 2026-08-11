@@ -14,7 +14,34 @@
 .price-chart__meta {
   display: flex;
   align-items: center;
+  gap: 14px;
   min-width: 0;
+}
+
+.price-chart__type-toggle {
+  display: flex;
+  gap: 2px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 2px;
+  flex: none;
+}
+
+.price-chart__type-btn {
+  padding: 2px 7px;
+  border: none;
+  border-radius: 2px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-family: var(--mono);
+  font-size: 10px;
+  cursor: pointer;
+}
+
+.price-chart__type-btn--active {
+  background: var(--signal-bg);
+  color: var(--signal);
+  font-weight: 600;
 }
 
 .price-chart__compare-toggle {

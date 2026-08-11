@@ -85,6 +85,7 @@ export default function PriceChart({
   onToggleCompare,
 }) {
   const [hoverIndex, setHoverIndex] = useState(null)
+  const [chartType, setChartType] = useState('line')
   const gradientId = useId()
   const goodGradientId = useId()
   const criticalGradientId = useId()
@@ -109,6 +110,7 @@ export default function PriceChart({
   const isIntraday = period === '1d' || period === '5d'
   const compareMode =
     hasData && compareEnabled && Array.isArray(benchmarkPrices) && benchmarkPrices.length === prices.length
+  const candleMode = chartType === 'candle' && hasOhl && !compareMode
 
   const primaryPct = compareMode ? normalize(prices) : null
   const benchmarkPct = compareMode ? normalize(benchmarkPrices) : null
@@ -121,7 +123,13 @@ export default function PriceChart({
   const volumeTop = padTop + pricePlotHeight + volumeGap
   const volumeBottom = volumeTop + volumeHeight
 
-  const scaleValues = hasData ? (compareMode ? [...primaryPct, ...benchmarkPct] : plotSeries) : [0]
+  const scaleValues = hasData
+    ? compareMode
+      ? [...primaryPct, ...benchmarkPct]
+      : candleMode
+        ? [...highs, ...lows]
+        : plotSeries
+    : [0]
   const rawMin = hasData ? Math.min(...scaleValues) : 0
   const rawMax = hasData ? Math.max(...scaleValues) : 1
   const rawRange = rawMax - rawMin || 1
@@ -185,6 +193,22 @@ export default function PriceChart({
   const volBarY = (v) => volumeBottom - (v / volMax) * volumeHeight
   const volBarH = (v) => (v / volMax) * volumeHeight
 
+  const candleWidth = candleMode ? Math.max(1, stepX * 0.6) : 0
+  const priceToY = (v) => padTop + pricePlotHeight * (1 - (v - min) / range)
+  const candles = candleMode
+    ? prices.map((close, i) => {
+        const up = close >= opens[i]
+        return {
+          x: points[i][0],
+          up,
+          wickTop: priceToY(highs[i]),
+          wickBottom: priceToY(lows[i]),
+          bodyTop: priceToY(Math.max(opens[i], close)),
+          bodyBottom: priceToY(Math.min(opens[i], close)),
+        }
+      })
+    : []
+
   const showPrevClose = relativeToPrevClose
 
   function updateHoverFromClientX(clientX, svgEl) {
@@ -220,6 +244,22 @@ export default function PriceChart({
             )}
             {!compareEnabled && <span className="price-chart__compare-hint">vs {benchmarkLabel}</span>}
           </button>
+          {hasOhl && !compareEnabled && (
+            <div className="price-chart__type-toggle" role="group" aria-label="Chart type">
+              <button
+                className={`price-chart__type-btn${chartType === 'line' ? ' price-chart__type-btn--active' : ''}`}
+                onClick={() => setChartType('line')}
+              >
+                Line
+              </button>
+              <button
+                className={`price-chart__type-btn${chartType === 'candle' ? ' price-chart__type-btn--active' : ''}`}
+                onClick={() => setChartType('candle')}
+              >
+                Candle
+              </button>
+            </div>
+          )}
         </div>
         <div className="price-chart__periods" role="group" aria-label="Time range">
           {PERIODS.map((p) => (
@@ -331,42 +371,66 @@ export default function PriceChart({
               </g>
             )}
 
-            {relativeToPrevClose ? (
-              coloredSegments.map((seg, i) => (
-                <path
-                  key={i}
-                  d={areaPathFor(seg.points, prevCloseY)}
-                  fill={`url(#${seg.color === 'var(--good)' ? goodGradientId : criticalGradientId})`}
-                />
+            {candleMode ? (
+              candles.map((c, i) => (
+                <g key={i}>
+                  <line
+                    x1={c.x}
+                    x2={c.x}
+                    y1={c.wickTop}
+                    y2={c.wickBottom}
+                    stroke={c.up ? 'var(--good)' : 'var(--critical)'}
+                    strokeWidth="1"
+                  />
+                  <rect
+                    x={c.x - candleWidth / 2}
+                    y={c.bodyTop}
+                    width={candleWidth}
+                    height={Math.max(1, c.bodyBottom - c.bodyTop)}
+                    fill={c.up ? 'var(--good)' : 'var(--critical)'}
+                  />
+                </g>
               ))
             ) : (
-              <path d={areaPath} fill={`url(#${gradientId})`} />
-            )}
-            {compareMode && (
-              <path
-                d={benchmarkPath}
-                fill="none"
-                stroke="var(--text-secondary)"
-                strokeWidth="1.5"
-                strokeDasharray="5 3"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            )}
-            {relativeToPrevClose ? (
-              coloredSegments.map((seg, i) => (
-                <path
-                  key={i}
-                  d={pathFromPoints(seg.points)}
-                  fill="none"
-                  stroke={seg.color}
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              ))
-            ) : (
-              <path d={linePath} fill="none" stroke={lineColor} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+              <>
+                {relativeToPrevClose ? (
+                  coloredSegments.map((seg, i) => (
+                    <path
+                      key={i}
+                      d={areaPathFor(seg.points, prevCloseY)}
+                      fill={`url(#${seg.color === 'var(--good)' ? goodGradientId : criticalGradientId})`}
+                    />
+                  ))
+                ) : (
+                  <path d={areaPath} fill={`url(#${gradientId})`} />
+                )}
+                {compareMode && (
+                  <path
+                    d={benchmarkPath}
+                    fill="none"
+                    stroke="var(--text-secondary)"
+                    strokeWidth="1.5"
+                    strokeDasharray="5 3"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                )}
+                {relativeToPrevClose ? (
+                  coloredSegments.map((seg, i) => (
+                    <path
+                      key={i}
+                      d={pathFromPoints(seg.points)}
+                      fill="none"
+                      stroke={seg.color}
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  ))
+                ) : (
+                  <path d={linePath} fill="none" stroke={lineColor} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                )}
+              </>
             )}
 
             {hasVolume &&
@@ -395,12 +459,14 @@ export default function PriceChart({
                   stroke="var(--border-strong)"
                   strokeWidth="1"
                 />
-                <circle
-                  cx={points[hoverIndex][0]}
-                  cy={points[hoverIndex][1]}
-                  r="4"
-                  fill={relativeToPrevClose ? (prices[hoverIndex] >= previousClose ? 'var(--good)' : 'var(--critical)') : lineColor}
-                />
+                {!candleMode && (
+                  <circle
+                    cx={points[hoverIndex][0]}
+                    cy={points[hoverIndex][1]}
+                    r="4"
+                    fill={relativeToPrevClose ? (prices[hoverIndex] >= previousClose ? 'var(--good)' : 'var(--critical)') : lineColor}
+                  />
+                )}
                 {compareMode && (
                   <circle
                     cx={benchmarkPoints[hoverIndex][0]}
