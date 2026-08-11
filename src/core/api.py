@@ -228,11 +228,16 @@ async def get_ticker_snapshot(ticker: str) -> StreamingResponse:
                     "news_headlines": quote["news_headlines"],
                     "fifty_two_week_low": quote["fifty_two_week_low"],
                     "fifty_two_week_high": quote["fifty_two_week_high"],
+                    "fifty_two_week_change_percent": quote["fifty_two_week_change_percent"],
                     "volume": quote["volume"],
                     "avg_volume_3m": quote["avg_volume_3m"],
                     "dividend_yield": quote["dividend_yield"],
                     "sector": quote["sector"],
                     "logo_domain": quote["logo_domain"],
+                    "forward_pe": quote["forward_pe"],
+                    "beta": quote["beta"],
+                    "analyst_rating": quote["analyst_rating"],
+                    "analyst_target_price": quote["analyst_target_price"],
                 }
             ),
         )

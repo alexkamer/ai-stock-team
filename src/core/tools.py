@@ -102,9 +102,9 @@ def get_pe_ratio(ticker: str) -> float:
 
 
 def get_ticker_stats(ticker: str) -> dict:
-    """Look up 52-week range, trading volume, dividend yield, sector, and
-    logo domain for a stock ticker, for the ticker detail page's hero and
-    expanded stat grid.
+    """Look up 52-week range, trading volume, dividend yield, sector, logo
+    domain, forward P/E, analyst rating/price target, and beta for a stock
+    ticker, for the ticker detail page's hero and expanded stat grid.
 
     Args:
         ticker: Stock ticker symbol, e.g. 'NVDA'.
@@ -115,11 +115,16 @@ def get_ticker_stats(ticker: str) -> dict:
     return {
         "fifty_two_week_low": info.get("fiftyTwoWeekLow"),
         "fifty_two_week_high": info.get("fiftyTwoWeekHigh"),
+        "fifty_two_week_change_percent": info.get("fiftyTwoWeekChangePercent"),
         "volume": info.get("regularMarketVolume"),
         "avg_volume_3m": info.get("averageDailyVolume3Month"),
         "dividend_yield": info.get("dividendYield"),
         "sector": info.get("sector"),
         "logo_domain": logo_domain,
+        "forward_pe": info.get("forwardPE"),
+        "beta": info.get("beta"),
+        "analyst_rating": info.get("averageAnalystRating"),
+        "analyst_target_price": info.get("targetMeanPrice"),
     }
 
 

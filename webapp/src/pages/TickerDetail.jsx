@@ -156,7 +156,10 @@ export default function TickerDetail() {
         </div>
         <div className="card ticker-detail__stat">
           <span className="ticker-detail__stat-label">P/E ratio</span>
-          <span className="ticker-detail__stat-value num">{quote ? quote.pe_ratio.toFixed(1) : '—'}</span>
+          <span className="ticker-detail__stat-value num">
+            {quote ? quote.pe_ratio.toFixed(1) : '—'}
+            {quote?.forward_pe && <span className="ticker-detail__stat-sub"> / fwd {quote.forward_pe.toFixed(1)}</span>}
+          </span>
         </div>
         <div className="card ticker-detail__stat">
           <span className="ticker-detail__stat-label">Volume</span>
@@ -180,6 +183,35 @@ export default function TickerDetail() {
           ) : (
             <span className="ticker-detail__stat-value num">—</span>
           )}
+        </div>
+        <div className="card ticker-detail__stat">
+          <span className="ticker-detail__stat-label">52-week change</span>
+          <span
+            className={`ticker-detail__stat-value num ${
+              quote?.fifty_two_week_change_percent != null
+                ? quote.fifty_two_week_change_percent >= 0
+                  ? 'ticker-detail__stat-value--good'
+                  : 'ticker-detail__stat-value--bad'
+                : ''
+            }`}
+          >
+            {quote?.fifty_two_week_change_percent != null
+              ? `${quote.fifty_two_week_change_percent >= 0 ? '+' : ''}${quote.fifty_two_week_change_percent.toFixed(1)}%`
+              : '—'}
+          </span>
+        </div>
+        <div className="card ticker-detail__stat">
+          <span className="ticker-detail__stat-label">Beta</span>
+          <span className="ticker-detail__stat-value num">{quote?.beta != null ? quote.beta.toFixed(2) : '—'}</span>
+        </div>
+        <div className="card ticker-detail__stat ticker-detail__stat--wide">
+          <span className="ticker-detail__stat-label">Analyst rating</span>
+          <span className="ticker-detail__stat-value">
+            {quote?.analyst_rating ?? '—'}
+            {quote?.analyst_target_price && (
+              <span className="ticker-detail__stat-sub num"> / target ${quote.analyst_target_price.toFixed(0)}</span>
+            )}
+          </span>
         </div>
       </div>
 
