@@ -83,9 +83,10 @@ export default function PriceChart({
   benchmarkLabel,
   compareEnabled,
   onToggleCompare,
+  chartType,
+  onChartTypeChange,
 }) {
   const [hoverIndex, setHoverIndex] = useState(null)
-  const [chartType, setChartType] = useState('line')
   const gradientId = useId()
   const goodGradientId = useId()
   const criticalGradientId = useId()
@@ -248,13 +249,13 @@ export default function PriceChart({
             <div className="price-chart__type-toggle" role="group" aria-label="Chart type">
               <button
                 className={`price-chart__type-btn${chartType === 'line' ? ' price-chart__type-btn--active' : ''}`}
-                onClick={() => setChartType('line')}
+                onClick={() => onChartTypeChange('line')}
               >
                 Line
               </button>
               <button
                 className={`price-chart__type-btn${chartType === 'candle' ? ' price-chart__type-btn--active' : ''}`}
-                onClick={() => setChartType('candle')}
+                onClick={() => onChartTypeChange('candle')}
               >
                 Candle
               </button>

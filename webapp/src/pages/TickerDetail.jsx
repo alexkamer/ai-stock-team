@@ -8,6 +8,25 @@ import './TickerDetail.css'
 
 const SENTIMENT_LABEL = { bullish: 'Bullish', bearish: 'Bearish', neutral: 'Neutral' }
 
+const CHART_PREFS_KEY = 'ticker-chart-prefs'
+
+function loadChartPrefs() {
+  try {
+    const raw = localStorage.getItem(CHART_PREFS_KEY)
+    return raw ? JSON.parse(raw) : {}
+  } catch {
+    return {}
+  }
+}
+
+function saveChartPrefs(prefs) {
+  try {
+    localStorage.setItem(CHART_PREFS_KEY, JSON.stringify(prefs))
+  } catch {
+    // localStorage unavailable (private browsing, quota) - preference just won't persist
+  }
+}
+
 function SentimentBadge({ sentiment }) {
   if (!sentiment) return null
   return <span className={`sentiment-badge sentiment-badge--${sentiment}`}>{SENTIMENT_LABEL[sentiment]}</span>
@@ -80,7 +99,8 @@ export default function TickerDetail() {
   const [sentiment, setSentiment] = useState(null)
   const [summary, setSummary] = useState('')
   const [error, setError] = useState(null)
-  const [period, setPeriod] = useState('1mo')
+  const [chartPrefs] = useState(loadChartPrefs)
+  const [period, setPeriod] = useState(chartPrefs.period ?? '1mo')
   const [prices, setPrices] = useState(null)
   const [labels, setLabels] = useState(null)
   const [volumes, setVolumes] = useState(null)
@@ -88,7 +108,8 @@ export default function TickerDetail() {
   const [lows, setLows] = useState(null)
   const [opens, setOpens] = useState(null)
   const [benchmarkPrices, setBenchmarkPrices] = useState(null)
-  const [compareBenchmark, setCompareBenchmark] = useState(false)
+  const [compareBenchmark, setCompareBenchmark] = useState(chartPrefs.compareBenchmark ?? false)
+  const [chartType, setChartType] = useState(chartPrefs.chartType ?? 'line')
   const [chartLoading, setChartLoading] = useState(false)
   const [updatedAt, setUpdatedAt] = useState(null)
   const { calls, handleEvent, reset } = useToolCalls()
@@ -161,6 +182,10 @@ export default function TickerDetail() {
       cancelled = true
     }
   }, [ticker, period, compareBenchmark])
+
+  useEffect(() => {
+    saveChartPrefs({ period, compareBenchmark, chartType })
+  }, [period, compareBenchmark, chartType])
 
   if (error) return <div className="error-banner">{error}</div>
 
@@ -314,6 +339,8 @@ export default function TickerDetail() {
           benchmarkLabel="S&P 500"
           compareEnabled={compareBenchmark}
           onToggleCompare={() => setCompareBenchmark((v) => !v)}
+          chartType={chartType}
+          onChartTypeChange={setChartType}
         />
       </div>
 
