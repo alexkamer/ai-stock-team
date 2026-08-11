@@ -219,6 +219,75 @@ def test_get_sparkline_prices_raises_when_empty(mock_ticker_cls):
 
 
 @patch("core.tools.yf.Ticker")
+def test_get_sparkline_returns_prices_labels_and_volumes(mock_ticker_cls):
+    history = pd.DataFrame(
+        {
+            "Open": [99.0, 103.0, 108.0],
+            "High": [101.0, 106.0, 111.0],
+            "Low": [98.0, 102.0, 107.0],
+            "Close": [100.0, 105.0, 110.0],
+            "Volume": [1_000, 2_000, 1_500],
+        },
+        index=pd.date_range("2024-01-01", periods=3, freq="D"),
+    )
+    mock_ticker_cls.return_value = make_ticker(history=history)
+
+    result = tools.get_sparkline("NVDA", period="1mo")
+
+    assert result["prices"] == [100.0, 105.0, 110.0]
+    assert result["volumes"] == [1000, 2000, 1500]
+    assert result["opens"] == [99.0, 103.0, 108.0]
+    assert result["highs"] == [101.0, 106.0, 111.0]
+    assert result["lows"] == [98.0, 102.0, 107.0]
+    assert result["labels"] == ["Jan 1", "Jan 2", "Jan 3"]
+    assert "benchmark_prices" not in result
+
+
+@patch("core.tools.yf.Ticker")
+def test_get_sparkline_raises_when_empty(mock_ticker_cls):
+    mock_ticker_cls.return_value = make_ticker(history=pd.DataFrame())
+
+    with pytest.raises(ValueError, match="No price history found"):
+        tools.get_sparkline("BADTICKER")
+
+
+@patch("core.tools.yf.Ticker")
+def test_get_sparkline_includes_benchmark_when_given(mock_ticker_cls):
+    history = pd.DataFrame(
+        {"Open": [99.0, 104.0], "High": [101.0, 106.0], "Low": [98.0, 103.0], "Close": [100.0, 105.0], "Volume": [1_000, 2_000]},
+        index=pd.date_range("2024-01-01", periods=2, freq="D"),
+    )
+    bench_history = pd.DataFrame(
+        {"Open": [499.0, 505.0], "High": [502.0, 511.0], "Low": [497.0, 504.0], "Close": [500.0, 510.0], "Volume": [9_000, 9_500]},
+        index=pd.date_range("2024-01-01", periods=2, freq="D"),
+    )
+    mock_ticker_cls.side_effect = lambda symbol: (
+        make_ticker(history=bench_history) if symbol == "spy" else make_ticker(history=history)
+    )
+
+    result = tools.get_sparkline("NVDA", period="1mo", benchmark="spy")
+
+    assert result["benchmark_prices"] == [500.0, 510.0]
+    assert result["benchmark_ticker"] == "SPY"
+
+
+@patch("core.tools.yf.Ticker")
+def test_get_sparkline_omits_benchmark_when_empty(mock_ticker_cls):
+    history = pd.DataFrame(
+        {"Open": [99.0, 104.0], "High": [101.0, 106.0], "Low": [98.0, 103.0], "Close": [100.0, 105.0], "Volume": [1_000, 2_000]},
+        index=pd.date_range("2024-01-01", periods=2, freq="D"),
+    )
+    mock_ticker_cls.side_effect = lambda symbol: (
+        make_ticker(history=pd.DataFrame()) if symbol == "BADBENCH" else make_ticker(history=history)
+    )
+
+    result = tools.get_sparkline("NVDA", period="1mo", benchmark="BADBENCH")
+
+    assert "benchmark_prices" not in result
+    assert "benchmark_ticker" not in result
+
+
+@patch("core.tools.yf.Ticker")
 def test_get_day_prices_returns_intraday_closes(mock_ticker_cls):
     history = pd.DataFrame({"Close": [100.0, 101.5, 99.8]})
     mock_ticker_cls.return_value = make_ticker(history=history)

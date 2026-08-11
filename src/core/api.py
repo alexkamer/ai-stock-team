@@ -184,10 +184,10 @@ def get_private_company_screen(screen: str, limit: int = 6) -> list[dict]:
 
 
 @app.get("/tickers/{ticker}/history")
-def get_ticker_history(ticker: str, period: str = "1mo") -> dict:
+def get_ticker_history(ticker: str, period: str = "1mo", benchmark: str | None = None) -> dict:
     ticker = ticker.upper()
     try:
-        return {"period": period, **get_sparkline(ticker, period=period)}
+        return {"period": period, **get_sparkline(ticker, period=period, benchmark=benchmark)}
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e)) from e
 

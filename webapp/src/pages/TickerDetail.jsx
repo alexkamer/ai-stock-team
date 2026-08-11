@@ -83,6 +83,13 @@ export default function TickerDetail() {
   const [period, setPeriod] = useState('1mo')
   const [prices, setPrices] = useState(null)
   const [labels, setLabels] = useState(null)
+  const [volumes, setVolumes] = useState(null)
+  const [highs, setHighs] = useState(null)
+  const [lows, setLows] = useState(null)
+  const [opens, setOpens] = useState(null)
+  const [benchmarkPrices, setBenchmarkPrices] = useState(null)
+  const [compareBenchmark, setCompareBenchmark] = useState(false)
+  const [chartLoading, setChartLoading] = useState(false)
   const [updatedAt, setUpdatedAt] = useState(null)
   const { calls, handleEvent, reset } = useToolCalls()
   const controllerRef = useRef(null)
@@ -124,17 +131,41 @@ export default function TickerDetail() {
   useEffect(() => {
     setPrices(null)
     setLabels(null)
-    getJSON(`/tickers/${ticker}/history?period=${period}`)
+    setVolumes(null)
+    setHighs(null)
+    setLows(null)
+    setOpens(null)
+    setBenchmarkPrices(null)
+  }, [ticker])
+
+  useEffect(() => {
+    let cancelled = false
+    setChartLoading(true)
+    const benchmarkParam = compareBenchmark ? '&benchmark=SPY' : ''
+    getJSON(`/tickers/${ticker}/history?period=${period}${benchmarkParam}`)
       .then((data) => {
+        if (cancelled) return
         setPrices(data.prices)
         setLabels(data.labels)
+        setVolumes(data.volumes ?? null)
+        setHighs(data.highs ?? null)
+        setLows(data.lows ?? null)
+        setOpens(data.opens ?? null)
+        setBenchmarkPrices(data.benchmark_prices ?? null)
       })
       .catch(() => {})
-  }, [ticker, period])
+      .finally(() => {
+        if (!cancelled) setChartLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [ticker, period, compareBenchmark])
 
   if (error) return <div className="error-banner">{error}</div>
 
   const positive = (quote?.day_change_percent ?? 0) >= 0
+  const previousClose = quote ? quote.price - quote.day_change_abs : null
 
   return (
     <div className="ticker-detail">
@@ -266,7 +297,24 @@ export default function TickerDetail() {
       </div>
 
       <div className="card">
-        <PriceChart prices={prices} labels={labels} period={period} onPeriodChange={setPeriod} positive={positive} />
+        <PriceChart
+          ticker={ticker}
+          prices={prices}
+          labels={labels}
+          volumes={volumes}
+          opens={opens}
+          highs={highs}
+          lows={lows}
+          period={period}
+          onPeriodChange={setPeriod}
+          positive={positive}
+          previousClose={previousClose}
+          loading={chartLoading}
+          benchmarkPrices={benchmarkPrices}
+          benchmarkLabel="S&P 500"
+          compareEnabled={compareBenchmark}
+          onToggleCompare={() => setCompareBenchmark((v) => !v)}
+        />
       </div>
 
       {quote?.news_headlines && (

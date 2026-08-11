@@ -200,23 +200,36 @@ def get_sparkline_prices(ticker: str, period: str = "1mo") -> list[float]:
     return [float(close) for close in history["Close"]]
 
 
-def get_sparkline(ticker: str, period: str = "1mo") -> dict:
-    """Look up closing prices and their timestamps for a stock ticker over a
-    period, for the ticker detail page's chart axis labels.
+def get_sparkline(ticker: str, period: str = "1mo", benchmark: str | None = None) -> dict:
+    """Look up closing prices, volumes, and timestamps for a stock ticker over
+    a period, for the ticker detail page's chart. Optionally also fetches a
+    benchmark ticker's closes over the same period for a compare overlay.
 
     Args:
         ticker: Stock ticker symbol, e.g. 'NVDA'.
         period: How far back to look, e.g. '1d', '5d', '1mo', '6mo', '1y'.
+        benchmark: Optional ticker to fetch alongside for a compare overlay, e.g. 'SPY'.
     """
-    history = yf.Ticker(ticker).history(period=period)
+    interval = {"1d": "5m", "5d": "15m"}.get(period, "1d")
+    fmt = {"1d": "%-I:%M %p", "5d": "%b %-d, %-I:%M %p"}.get(period, "%b %-d")
+
+    history = yf.Ticker(ticker).history(period=period, interval=interval)
     if history.empty:
         raise ValueError(f"No price history found for ticker {ticker!r}")
-    is_intraday = period in ("1d", "5d")
-    fmt = "%-I:%M %p" if is_intraday else "%b %-d"
-    return {
+    result = {
         "prices": [float(close) for close in history["Close"]],
         "labels": [ts.strftime(fmt) for ts in history.index],
+        "volumes": [int(volume) for volume in history["Volume"]],
+        "opens": [float(open_) for open_ in history["Open"]],
+        "highs": [float(high) for high in history["High"]],
+        "lows": [float(low) for low in history["Low"]],
     }
+    if benchmark:
+        bench_history = yf.Ticker(benchmark).history(period=period, interval=interval)
+        if not bench_history.empty:
+            result["benchmark_prices"] = [float(close) for close in bench_history["Close"]]
+            result["benchmark_ticker"] = benchmark.upper()
+    return result
 
 
 def get_news_headlines(ticker: str, limit: int = 5) -> list[str]:
