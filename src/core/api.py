@@ -238,6 +238,9 @@ async def get_ticker_snapshot(ticker: str) -> StreamingResponse:
                     "beta": quote["beta"],
                     "analyst_rating": quote["analyst_rating"],
                     "analyst_target_price": quote["analyst_target_price"],
+                    "analyst_target_low": quote["analyst_target_low"],
+                    "analyst_target_high": quote["analyst_target_high"],
+                    "analyst_count": quote["analyst_count"],
                 }
             ),
         )

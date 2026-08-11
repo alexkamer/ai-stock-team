@@ -125,6 +125,9 @@ def get_ticker_stats(ticker: str) -> dict:
         "beta": info.get("beta"),
         "analyst_rating": info.get("averageAnalystRating"),
         "analyst_target_price": info.get("targetMeanPrice"),
+        "analyst_target_low": info.get("targetLowPrice"),
+        "analyst_target_high": info.get("targetHighPrice"),
+        "analyst_count": info.get("numberOfAnalystOpinions"),
     }
 
 

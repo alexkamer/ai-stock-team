@@ -41,14 +41,31 @@ function formatCompact(n) {
   return `${n}`
 }
 
-function RangeBar({ low, high, value }) {
+function RangeBar({ low, high, value, valueLabel = 'Current price', secondaryValue, secondaryLabel }) {
   if (low == null || high == null || value == null || high <= low) return null
-  const pct = Math.max(0, Math.min(100, ((value - low) / (high - low)) * 100))
+  const toPct = (v) => Math.max(0, Math.min(100, ((v - low) / (high - low)) * 100))
   return (
     <div className="range-bar">
       <div className="range-bar__track">
-        <div className="range-bar__marker" style={{ left: `${pct}%` }} />
+        <div className="range-bar__marker" style={{ left: `${toPct(value)}%` }} title={valueLabel} />
+        {secondaryValue != null && (
+          <div
+            className="range-bar__marker range-bar__marker--secondary"
+            style={{ left: `${toPct(secondaryValue)}%` }}
+            title={secondaryLabel}
+          />
+        )}
       </div>
+      {secondaryValue != null && (
+        <div className="range-bar__legend">
+          <span className="range-bar__legend-item">
+            <span className="range-bar__legend-swatch range-bar__legend-swatch--primary" /> {valueLabel}
+          </span>
+          <span className="range-bar__legend-item">
+            <span className="range-bar__legend-swatch range-bar__legend-swatch--secondary" /> {secondaryLabel}
+          </span>
+        </div>
+      )}
       <div className="range-bar__labels">
         <span className="num">${low.toFixed(2)}</span>
         <span className="num">${high.toFixed(2)}</span>
@@ -204,14 +221,32 @@ export default function TickerDetail() {
           <span className="ticker-detail__stat-label">Beta</span>
           <span className="ticker-detail__stat-value num">{quote?.beta != null ? quote.beta.toFixed(2) : '—'}</span>
         </div>
-        <div className="card ticker-detail__stat ticker-detail__stat--wide">
-          <span className="ticker-detail__stat-label">Analyst rating</span>
-          <span className="ticker-detail__stat-value">
-            {quote?.analyst_rating ?? '—'}
-            {quote?.analyst_target_price && (
-              <span className="ticker-detail__stat-sub num"> / target ${quote.analyst_target_price.toFixed(0)}</span>
-            )}
+        <div className="card ticker-detail__stat">
+          <span
+            className="ticker-detail__stat-label"
+            title="Average of analysts' 1 (Strong Buy) to 5 (Strong Sell) ratings"
+          >
+            Analyst rating
           </span>
+          <span className="ticker-detail__stat-value">{quote?.analyst_rating ?? '—'}</span>
+          <span className="ticker-detail__stat-caption">1 = Strong Buy · 5 = Strong Sell</span>
+        </div>
+        <div className="card ticker-detail__stat ticker-detail__stat--wide">
+          <span className="ticker-detail__stat-label">
+            Analyst price target
+            {quote?.analyst_count ? ` (${quote.analyst_count} analysts)` : ''}
+          </span>
+          {quote?.analyst_target_low != null && quote?.analyst_target_high != null ? (
+            <RangeBar
+              low={quote.analyst_target_low}
+              high={quote.analyst_target_high}
+              value={quote.price}
+              secondaryValue={quote.analyst_target_price}
+              secondaryLabel={`Mean target $${quote.analyst_target_price?.toFixed(0)}`}
+            />
+          ) : (
+            <span className="ticker-detail__stat-value num">—</span>
+          )}
         </div>
       </div>
 
