@@ -3,6 +3,7 @@
 from collections.abc import Callable, Iterable
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
+from datetime import time
 from typing import TypeVar
 
 import requests
@@ -210,10 +211,11 @@ def get_sparkline(ticker: str, period: str = "1mo", benchmark: str | None = None
         period: How far back to look, e.g. '1d', '5d', '1mo', '6mo', '1y'.
         benchmark: Optional ticker to fetch alongside for a compare overlay, e.g. 'SPY'.
     """
+    is_intraday = period in ("1d", "5d")
     interval = {"1d": "5m", "5d": "15m"}.get(period, "1d")
     fmt = {"1d": "%-I:%M %p", "5d": "%b %-d, %-I:%M %p"}.get(period, "%b %-d")
 
-    history = yf.Ticker(ticker).history(period=period, interval=interval)
+    history = yf.Ticker(ticker).history(period=period, interval=interval, prepost=is_intraday)
     if history.empty:
         raise ValueError(f"No price history found for ticker {ticker!r}")
     result = {
@@ -224,8 +226,11 @@ def get_sparkline(ticker: str, period: str = "1mo", benchmark: str | None = None
         "highs": [float(high) for high in history["High"]],
         "lows": [float(low) for low in history["Low"]],
     }
+    if is_intraday:
+        regular_open, regular_close = time(9, 30), time(16, 0)
+        result["is_regular_hours"] = [regular_open <= ts.time() < regular_close for ts in history.index]
     if benchmark:
-        bench_history = yf.Ticker(benchmark).history(period=period, interval=interval)
+        bench_history = yf.Ticker(benchmark).history(period=period, interval=interval, prepost=is_intraday)
         if not bench_history.empty:
             result["benchmark_prices"] = [float(close) for close in bench_history["Close"]]
             result["benchmark_ticker"] = benchmark.upper()

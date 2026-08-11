@@ -68,23 +68,26 @@ function pathFromPoints(pts) {
  */
 export default function PriceChart({
   ticker,
-  prices,
-  labels,
-  volumes,
-  opens,
-  highs,
-  lows,
+  prices: pricesProp,
+  labels: labelsProp,
+  volumes: volumesProp,
+  opens: opensProp,
+  highs: highsProp,
+  lows: lowsProp,
+  isRegularHours,
   period,
   onPeriodChange,
   positive,
   previousClose,
   loading,
-  benchmarkPrices,
+  benchmarkPrices: benchmarkPricesProp,
   benchmarkLabel,
   compareEnabled,
   onToggleCompare,
   chartType,
   onChartTypeChange,
+  extendedHours,
+  onToggleExtendedHours,
 }) {
   const [hoverIndex, setHoverIndex] = useState(null)
   const gradientId = useId()
@@ -97,6 +100,26 @@ export default function PriceChart({
   const padLeft = 8
   const padRight = 52
 
+  const isIntraday = period === '1d' || period === '5d'
+  const hasExtendedHoursData =
+    isIntraday &&
+    Array.isArray(isRegularHours) &&
+    Array.isArray(pricesProp) &&
+    isRegularHours.length === pricesProp.length &&
+    isRegularHours.includes(false)
+  const filterToRegularHours = hasExtendedHoursData && !extendedHours
+  const keepAt = (i) => !filterToRegularHours || isRegularHours[i]
+  const filterArr = (arr) => (filterToRegularHours && Array.isArray(arr) ? arr.filter((_, i) => keepAt(i)) : arr)
+
+  const prices = filterArr(pricesProp)
+  const labels = filterArr(labelsProp)
+  const volumes = filterArr(volumesProp)
+  const opens = filterArr(opensProp)
+  const highs = filterArr(highsProp)
+  const lows = filterArr(lowsProp)
+  const benchmarkPrices = filterArr(benchmarkPricesProp)
+  const regularHoursMask = filterToRegularHours ? isRegularHours.filter((_, i) => keepAt(i)) : isRegularHours
+
   const hasData = prices && prices.length > 1
   const isStale = loading && hasData
   const hasVolume = hasData && Array.isArray(volumes) && volumes.length === prices.length
@@ -108,7 +131,6 @@ export default function PriceChart({
     opens.length === prices.length &&
     highs.length === prices.length &&
     lows.length === prices.length
-  const isIntraday = period === '1d' || period === '5d'
   const compareMode =
     hasData && compareEnabled && Array.isArray(benchmarkPrices) && benchmarkPrices.length === prices.length
   const candleMode = chartType === 'candle' && hasOhl && !compareMode
@@ -189,6 +211,22 @@ export default function PriceChart({
         )
       : distinctLabelIndices
 
+  // Contiguous runs of pre/post-market points, shaded behind the plot when
+  // extended hours are shown (only meaningful when nothing was filtered out).
+  const extendedHoursBands = []
+  if (hasData && !filterToRegularHours && Array.isArray(regularHoursMask) && regularHoursMask.length === prices.length) {
+    let bandStart = null
+    for (let i = 0; i < regularHoursMask.length; i++) {
+      const isExtended = !regularHoursMask[i]
+      if (isExtended && bandStart === null) bandStart = i
+      if (!isExtended && bandStart !== null) {
+        extendedHoursBands.push([bandStart, i - 1])
+        bandStart = null
+      }
+    }
+    if (bandStart !== null) extendedHoursBands.push([bandStart, regularHoursMask.length - 1])
+  }
+
   const volMax = hasVolume ? Math.max(...volumes, 1) : 1
   const barWidth = hasVolume ? Math.max(0.5, stepX * 0.6) : 0
   const volBarY = (v) => volumeBottom - (v / volMax) * volumeHeight
@@ -261,6 +299,14 @@ export default function PriceChart({
               </button>
             </div>
           )}
+          {hasExtendedHoursData && (
+            <button
+              className={`price-chart__ext-hours-toggle${extendedHours ? ' price-chart__ext-hours-toggle--active' : ''}`}
+              onClick={onToggleExtendedHours}
+            >
+              Extended hours
+            </button>
+          )}
         </div>
         <div className="price-chart__periods" role="group" aria-label="Time range">
           {PERIODS.map((p) => (
@@ -312,6 +358,21 @@ export default function PriceChart({
                 </linearGradient>
               )}
             </defs>
+
+            {extendedHoursBands.map(([startIdx, endIdx], i) => {
+              const x1 = startIdx === 0 ? padLeft : (points[startIdx][0] + points[startIdx - 1][0]) / 2
+              const x2 = endIdx === points.length - 1 ? width - padRight : (points[endIdx][0] + points[endIdx + 1][0]) / 2
+              return (
+                <rect
+                  key={i}
+                  x={x1}
+                  y={padTop}
+                  width={Math.max(0, x2 - x1)}
+                  height={pricePlotHeight}
+                  className="price-chart__extended-hours-band"
+                />
+              )
+            })}
 
             {gridValues.map((v, i) => {
               const y = padTop + pricePlotHeight * (1 - (v - min) / range)

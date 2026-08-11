@@ -90,6 +90,30 @@
   border-top: 1.5px dashed var(--text-secondary);
 }
 
+.price-chart__ext-hours-toggle {
+  padding: 2px 7px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-family: var(--mono);
+  font-size: 10px;
+  cursor: pointer;
+  flex: none;
+}
+
+.price-chart__ext-hours-toggle--active {
+  background: var(--signal-bg);
+  border-color: var(--signal-border);
+  color: var(--signal);
+  font-weight: 600;
+}
+
+.price-chart__extended-hours-band {
+  fill: var(--text-muted);
+  opacity: 0.08;
+}
+
 .price-chart__periods {
   display: flex;
   gap: 2px;

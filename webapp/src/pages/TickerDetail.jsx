@@ -107,9 +107,11 @@ export default function TickerDetail() {
   const [highs, setHighs] = useState(null)
   const [lows, setLows] = useState(null)
   const [opens, setOpens] = useState(null)
+  const [isRegularHours, setIsRegularHours] = useState(null)
   const [benchmarkPrices, setBenchmarkPrices] = useState(null)
   const [compareBenchmark, setCompareBenchmark] = useState(chartPrefs.compareBenchmark ?? false)
   const [chartType, setChartType] = useState(chartPrefs.chartType ?? 'line')
+  const [extendedHours, setExtendedHours] = useState(chartPrefs.extendedHours ?? false)
   const [chartLoading, setChartLoading] = useState(false)
   const [updatedAt, setUpdatedAt] = useState(null)
   const { calls, handleEvent, reset } = useToolCalls()
@@ -156,6 +158,7 @@ export default function TickerDetail() {
     setHighs(null)
     setLows(null)
     setOpens(null)
+    setIsRegularHours(null)
     setBenchmarkPrices(null)
   }, [ticker])
 
@@ -172,6 +175,7 @@ export default function TickerDetail() {
         setHighs(data.highs ?? null)
         setLows(data.lows ?? null)
         setOpens(data.opens ?? null)
+        setIsRegularHours(data.is_regular_hours ?? null)
         setBenchmarkPrices(data.benchmark_prices ?? null)
       })
       .catch(() => {})
@@ -184,8 +188,8 @@ export default function TickerDetail() {
   }, [ticker, period, compareBenchmark])
 
   useEffect(() => {
-    saveChartPrefs({ period, compareBenchmark, chartType })
-  }, [period, compareBenchmark, chartType])
+    saveChartPrefs({ period, compareBenchmark, chartType, extendedHours })
+  }, [period, compareBenchmark, chartType, extendedHours])
 
   if (error) return <div className="error-banner">{error}</div>
 
@@ -335,12 +339,15 @@ export default function TickerDetail() {
           positive={positive}
           previousClose={previousClose}
           loading={chartLoading}
+          isRegularHours={isRegularHours}
           benchmarkPrices={benchmarkPrices}
           benchmarkLabel="S&P 500"
           compareEnabled={compareBenchmark}
           onToggleCompare={() => setCompareBenchmark((v) => !v)}
           chartType={chartType}
           onChartTypeChange={setChartType}
+          extendedHours={extendedHours}
+          onToggleExtendedHours={() => setExtendedHours((v) => !v)}
         />
       </div>
 

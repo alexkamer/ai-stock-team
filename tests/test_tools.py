@@ -244,6 +244,39 @@ def test_get_sparkline_returns_prices_labels_and_volumes(mock_ticker_cls):
 
 
 @patch("core.tools.yf.Ticker")
+def test_get_sparkline_flags_regular_hours_for_intraday_periods(mock_ticker_cls):
+    history = pd.DataFrame(
+        {
+            "Open": [99.0, 103.0, 108.0],
+            "High": [101.0, 106.0, 111.0],
+            "Low": [98.0, 102.0, 107.0],
+            "Close": [100.0, 105.0, 110.0],
+            "Volume": [1_000, 2_000, 1_500],
+        },
+        index=pd.DatetimeIndex(["2024-01-02 08:00", "2024-01-02 10:00", "2024-01-02 17:00"]),
+    )
+    mock_ticker_cls.return_value = make_ticker(history=history)
+
+    result = tools.get_sparkline("NVDA", period="1d")
+
+    assert result["is_regular_hours"] == [False, True, False]
+    mock_ticker_cls.return_value.history.assert_called_once_with(period="1d", interval="5m", prepost=True)
+
+
+@patch("core.tools.yf.Ticker")
+def test_get_sparkline_omits_regular_hours_for_daily_periods(mock_ticker_cls):
+    history = pd.DataFrame(
+        {"Open": [99.0], "High": [101.0], "Low": [98.0], "Close": [100.0], "Volume": [1_000]},
+        index=pd.date_range("2024-01-01", periods=1, freq="D"),
+    )
+    mock_ticker_cls.return_value = make_ticker(history=history)
+
+    result = tools.get_sparkline("NVDA", period="1mo")
+
+    assert "is_regular_hours" not in result
+
+
+@patch("core.tools.yf.Ticker")
 def test_get_sparkline_raises_when_empty(mock_ticker_cls):
     mock_ticker_cls.return_value = make_ticker(history=pd.DataFrame())
 
