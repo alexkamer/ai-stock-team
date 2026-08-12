@@ -133,6 +133,10 @@
   justify-content: space-between;
 }
 
+.dashboard__section-head--more {
+  margin-top: 12px;
+}
+
 .dashboard__section-head h2 {
   font-size: 18px;
 }

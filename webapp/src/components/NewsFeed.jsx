@@ -1,3 +1,4 @@
+import TickerBadge from './TickerBadge'
 import './NewsFeed.css'
 
 function timeAgo(isoDate) {
@@ -21,6 +22,7 @@ function NewsRow({ article }) {
       <div className="news-row__body">
         <p className="news-row__title">{article.title}</p>
         <span className="news-row__meta">
+          <TickerBadge ticker={article.ticker} percent={article.ticker_day_change_percent} />
           {article.publisher}
           {article.publisher && article.published_at ? ' · ' : ''}
           {timeAgo(article.published_at)}

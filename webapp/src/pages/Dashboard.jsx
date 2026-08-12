@@ -2,9 +2,18 @@ import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { getJSON } from '../api/client'
 import NewsFeed from '../components/NewsFeed'
+import NewsCarousel from '../components/NewsCarousel'
+import NewsColumns from '../components/NewsColumns'
 import Sparkline from '../components/Sparkline'
 import { useWatchlist } from '../context/WatchlistContext'
 import './Dashboard.css'
+
+// Matches NEWS_CATEGORY_TICKERS' keys on the backend.
+const NEWS_CATEGORIES = [
+  { key: 'top', label: 'Top Stories' },
+  { key: 'markets', label: 'Markets & Economy' },
+  { key: 'tech', label: 'Tech & AI' },
+]
 
 const MARKET_INSTRUMENTS = [
   { ticker: '^GSPC', label: 'S&P 500' },
@@ -130,6 +139,10 @@ export default function Dashboard() {
   const [quotes, setQuotes] = useState(null)
   const [marketQuotesList, setMarketQuotesList] = useState(null)
   const [news, setNews] = useState(null)
+  const [categoryNews, setCategoryNews] = useState(() =>
+    Object.fromEntries(NEWS_CATEGORIES.map((c) => [c.key, null]))
+  )
+  const [moreNews, setMoreNews] = useState(null)
   const [trending, setTrending] = useState(null)
   const [mostActive, setMostActive] = useState(null)
   const [gainers, setGainers] = useState(null)
@@ -185,6 +198,14 @@ export default function Dashboard() {
     getJSON('/markets/stocks/losers')
       .then((data) => !cancelled && setLosers(data.items))
       .catch(() => !cancelled && setLosers([]))
+    NEWS_CATEGORIES.forEach(({ key }) => {
+      getJSON(`/news?category=${key}&limit=6`)
+        .then((data) => !cancelled && setCategoryNews((prev) => ({ ...prev, [key]: data })))
+        .catch(() => !cancelled && setCategoryNews((prev) => ({ ...prev, [key]: [] })))
+    })
+    getJSON('/news?category=more&limit=24')
+      .then((data) => !cancelled && setMoreNews(data))
+      .catch(() => !cancelled && setMoreNews([]))
     return () => {
       cancelled = true
     }
@@ -198,6 +219,21 @@ export default function Dashboard() {
 
   const byTicker = (list) => Object.fromEntries((list ?? []).map((q) => [q.ticker, q]))
   const marketQuotes = byTicker(marketQuotesList)
+
+  // Split headlines into a small image-led "top stories" carousel and a
+  // plain list for the rest, rather than one long undifferentiated feed.
+  const featured = news?.filter((a) => a.thumbnail).slice(0, 4) ?? null
+  const featuredUrls = new Set((featured ?? []).map((a) => a.url))
+  const rest = news?.filter((a) => !featuredUrls.has(a.url)) ?? news
+
+  // "More News" excludes anything already surfaced above (carousel, list,
+  // or one of the three category columns) so it reads as genuinely more,
+  // not a re-shuffled repeat of the same top stories.
+  const shownUrls = new Set([
+    ...(news ?? []).map((a) => a.url),
+    ...NEWS_CATEGORIES.flatMap((c) => (categoryNews[c.key] ?? []).map((a) => a.url)),
+  ])
+  const more = moreNews?.filter((a) => !shownUrls.has(a.url)) ?? moreNews
 
   if (error) return <div className="error-banner">Failed to load watchlist: {error}</div>
 
@@ -255,7 +291,16 @@ export default function Dashboard() {
           <div className="dashboard__section-head">
             <h2>Latest News</h2>
           </div>
-          <NewsFeed articles={news} />
+          <NewsCarousel articles={featured} />
+          <NewsFeed articles={rest} />
+          <NewsColumns
+            columns={NEWS_CATEGORIES.map((c) => ({ ...c, articles: categoryNews[c.key] }))}
+          />
+
+          <div className="dashboard__section-head dashboard__section-head--more">
+            <h2>More News</h2>
+          </div>
+          <NewsFeed articles={more} />
         </section>
 
         <div className="dashboard__side">

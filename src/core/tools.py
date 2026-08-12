@@ -586,12 +586,36 @@ def get_news_headlines(ticker: str, limit: int = 5) -> list[str]:
     return headlines[:limit]
 
 
+
+# yfinance's `.news` property only pulls the latest 10 stories per ticker
+# (~1 hour of coverage on an active ticker). Asking get_news() for more
+# directly gives get_market_news a several-hour pool to pick "best" articles
+# from and still leave a real remainder for the More News overflow.
+NEWS_FETCH_COUNT = 30
+
+
+def _article_quality_score(article: dict) -> int:
+    """Editorial/visual quality signal used to rank "best" over "newest" -
+    Yahoo's own editors' pick flag counts most, a thumbnail (needed for the
+    carousel/card treatments anyway) counts a little. Ties fall back to
+    recency via get_market_news' stable sort."""
+    return (2 if article["_editors_pick"] else 0) + (1 if article["thumbnail"] else 0)
+
+
 def get_market_news(tickers: list[str], limit: int = 8) -> list[dict]:
-    """Look up recent news across a set of tickers, merged and sorted by recency.
+    """Look up the best recent news across a set of tickers, for the homepage.
 
     Unlike get_news_headlines (titles only, for one ticker, for agent
     reasoning), this returns publisher/url/thumbnail too and merges several
-    tickers into one feed, for the dashboard's news section.
+    tickers into one feed. Each article is tagged with the ticker whose feed
+    it came from (dedup is by URL only, so if a story surfaces under two
+    tickers it's credited to whichever one's call happened to produce it
+    first) plus that ticker's day change, so the UI can show a "NVDA +3.03%"
+    style badge. Ranked by quality (see _article_quality_score) rather than
+    pure recency, so a caller taking a small `limit` gets the best of the
+    pool fetched rather than just whatever posted most recently - callers
+    that want "everything else" should fetch a much larger `limit` against
+    the same tickers and filter out what a "best of" call already returned.
 
     Args:
         tickers: Stock ticker symbols to pull headlines from.
@@ -599,7 +623,8 @@ def get_market_news(tickers: list[str], limit: int = 8) -> list[dict]:
     """
     seen_urls: set[str] = set()
     articles = []
-    for ticker_articles in parallel_map(lambda t: yf.Ticker(t).news, tickers):
+    fetch = lambda t: yf.Ticker(t).get_news(count=NEWS_FETCH_COUNT)
+    for ticker, ticker_articles in zip(tickers, parallel_map(fetch, tickers)):
         for article in ticker_articles:
             content = article.get("content", {})
             title = content.get("title")
@@ -608,17 +633,40 @@ def get_market_news(tickers: list[str], limit: int = 8) -> list[dict]:
                 continue
             seen_urls.add(url)
             resolutions = (content.get("thumbnail") or {}).get("resolutions") or []
+            best = max(resolutions, key=lambda r: r.get("width", 0), default=None)
             articles.append(
                 {
                     "title": title,
                     "publisher": content.get("provider", {}).get("displayName", ""),
                     "url": url,
                     "published_at": content.get("pubDate", ""),
-                    "thumbnail": resolutions[-1]["url"] if resolutions else None,
+                    "thumbnail": best["url"] if best else None,
+                    "ticker": ticker,
+                    "_editors_pick": bool((content.get("metadata") or {}).get("editorsPick")),
                 }
             )
     articles.sort(key=lambda a: a["published_at"], reverse=True)
-    return articles[:limit]
+    articles.sort(key=_article_quality_score, reverse=True)
+    articles = articles[:limit]
+    for article in articles:
+        del article["_editors_pick"]
+
+    unique_tickers = sorted({a["ticker"] for a in articles})
+    day_changes = {}
+    for ticker, change in zip(unique_tickers, parallel_map(_try_day_change, unique_tickers)):
+        if change is not None:
+            day_changes[ticker] = change
+    for article in articles:
+        article["ticker_day_change_percent"] = day_changes.get(article["ticker"])
+
+    return articles
+
+
+def _try_day_change(ticker: str) -> float | None:
+    try:
+        return get_day_change(ticker)["percent"]
+    except ValueError:
+        return None
 
 
 def get_day_prices(ticker: str) -> list[float]:
@@ -1001,6 +1049,23 @@ def get_best_historical_performers(limit: int = 6, offset: int = 0) -> tuple[lis
 # There's no per-user storage in this app - the frontend is the source of
 # truth for a real watchlist; this only covers the "no list sent" case.
 DEFAULT_WATCHLIST = ["NVDA", "AAPL", "MSFT", "GOOGL", "AMZN"]
+
+# Curated ticker sets used to source the homepage's category news columns.
+# yfinance's news payload carries no topic tags, so "category" here just
+# means "which tickers' headlines feed this column" - see get_market_news.
+NEWS_CATEGORY_TICKERS = {
+    "top": DEFAULT_WATCHLIST + ["TSLA", "^GSPC"],
+    "markets": ["^GSPC", "^DJI", "^IXIC", "^RUT", "^VIX", "GC=F", "CL=F"],
+    "tech": ["NVDA", "AAPL", "MSFT", "GOOGL", "META", "AMD", "AVGO", "ORCL"],
+}
+
+# "More News" pulls from the union of every category above, so it's a
+# broader pool the homepage can filter down to whatever wasn't already
+# shown in the carousel/list/category columns, rather than a distinct
+# ticker set of its own.
+NEWS_CATEGORY_TICKERS["more"] = sorted(
+    {t for tickers in NEWS_CATEGORY_TICKERS.values() for t in tickers}
+)
 
 
 @dataclass

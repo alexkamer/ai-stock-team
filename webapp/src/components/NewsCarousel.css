@@ -1,0 +1,138 @@
+.news-carousel {
+  position: relative;
+  height: 360px;
+  border-radius: 3px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+}
+
+.news-carousel--loading {
+  background: linear-gradient(90deg, var(--surface-1) 25%, var(--surface-2) 50%, var(--surface-1) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.4s infinite;
+}
+
+.news-carousel__slide {
+  display: block;
+  position: absolute;
+  inset: 0;
+  background-color: var(--surface-2);
+  background-size: cover;
+  background-position: center;
+}
+
+.news-carousel__scrim {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0) 35%, rgba(0, 0, 0, 0.78) 100%);
+}
+
+.news-carousel__body {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 24px 28px;
+  color: #fff;
+}
+
+.news-carousel__eyebrow {
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.75);
+}
+
+.news-carousel__title {
+  margin: 0;
+  max-width: 720px;
+  font-size: 24px;
+  line-height: 1.28;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.news-carousel__meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--mono);
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.news-carousel__nav {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(15, 16, 19, 0.45);
+  color: #fff;
+  font-size: 18px;
+  cursor: pointer;
+  transition: background 0.12s ease;
+}
+
+.news-carousel__nav:hover {
+  background: rgba(15, 16, 19, 0.7);
+}
+
+.news-carousel__nav--left {
+  left: 14px;
+}
+
+.news-carousel__nav--right {
+  right: 14px;
+}
+
+.news-carousel__dots {
+  position: absolute;
+  right: 20px;
+  bottom: 20px;
+  display: flex;
+  gap: 6px;
+}
+
+.news-carousel__dot {
+  width: 7px;
+  height: 7px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.4);
+  cursor: pointer;
+  transition: background 0.12s ease, transform 0.12s ease;
+}
+
+.news-carousel__dot--active {
+  background: #fff;
+  transform: scale(1.3);
+}
+
+@media (max-width: 640px) {
+  .news-carousel {
+    height: 260px;
+  }
+
+  .news-carousel__title {
+    font-size: 18px;
+  }
+
+  .news-carousel__body {
+    padding: 16px 18px;
+  }
+}

@@ -27,6 +27,7 @@ from agents.stock_team import get_team_analysis
 from core.sse import Final, format_sse, run_agent_streaming
 from core.tools import (
     DEFAULT_WATCHLIST,
+    NEWS_CATEGORY_TICKERS,
     get_best_historical_performers,
     get_company_name,
     get_day_change,
@@ -223,9 +224,21 @@ def get_ticker_compare_history(
 
 
 @app.get("/news")
-def get_home_news(symbols: str | None = None, limit: int = 8) -> list[dict]:
-    """Merged recent headlines across the watchlist (or `symbols` if given), for the homepage."""
-    tickers = symbols.split(",") if symbols else DEFAULT_WATCHLIST
+def get_home_news(symbols: str | None = None, category: str | None = None, limit: int = 8) -> list[dict]:
+    """Merged recent headlines, for the homepage.
+
+    Ticker source, in priority order: explicit `symbols`, a `category` from
+    NEWS_CATEGORY_TICKERS (the homepage's Top Stories/Markets/Tech columns),
+    or the watchlist fallback.
+    """
+    if symbols:
+        tickers = symbols.split(",")
+    elif category:
+        tickers = NEWS_CATEGORY_TICKERS.get(category)
+        if tickers is None:
+            raise HTTPException(status_code=404, detail=f"Unknown news category: {category}")
+    else:
+        tickers = DEFAULT_WATCHLIST
     return get_market_news(tickers, limit=limit)
 
 

@@ -53,6 +53,9 @@
 }
 
 .news-row__meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   font-family: var(--mono);
   font-size: 11px;
   color: var(--text-muted);
