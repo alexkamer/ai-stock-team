@@ -42,6 +42,7 @@ from core.tools import (
     get_news_headlines,
     get_pe_ratio,
     get_price_performance,
+    get_price_ratios,
     get_sparkline,
     get_sparkline_prices,
     get_diluted_eps_history,
@@ -167,6 +168,7 @@ def _compare_quote(ticker: str) -> dict | None:
             "price_performance": get_price_performance(ticker),
             "income_statement": get_income_statement(ticker),
             "cash_flow_statement": get_cash_flow_statement(ticker),
+            "price_ratios": get_price_ratios(ticker),
         }
     except ValueError:
         return None

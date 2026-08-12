@@ -511,6 +511,40 @@ def get_cash_flow_statement(ticker: str) -> dict:
     }
 
 
+def get_price_ratios(ticker: str) -> dict:
+    """Look up trailing and forward P/E, price-to-free-cash-flow, price-to-book,
+    price-to-sales, and EV/EBITDA for a stock ticker, for the stock
+    comparison page's price ratios table.
+
+    Args:
+        ticker: Stock ticker symbol, e.g. 'NVDA'.
+    """
+    info = _get_info(ticker)
+
+    # Price-to-free-cash-flow has no direct yfinance field, unlike the other
+    # five ratios below - derive it as market cap / free cash flow (equal to
+    # price-per-share / FCF-per-share, but avoids needing shares outstanding
+    # as a separate input).
+    price_to_fcf = None
+    market_cap = info.get("marketCap")
+    if market_cap:
+        try:
+            free_cash_flow = get_cash_flow_statement(ticker).get("free_cash_flow")
+        except ValueError:
+            free_cash_flow = None
+        if free_cash_flow:
+            price_to_fcf = market_cap / free_cash_flow
+
+    return {
+        "pe_ratio": info.get("trailingPE"),
+        "forward_pe_ratio": info.get("forwardPE"),
+        "price_to_fcf": price_to_fcf,
+        "price_to_book": info.get("priceToBook"),
+        "price_to_sales": info.get("priceToSalesTrailing12Months"),
+        "ev_to_ebitda": info.get("enterpriseToEbitda"),
+    }
+
+
 def get_news_headlines(ticker: str, limit: int = 5) -> list[str]:
     """Look up recent news headlines for a stock ticker.
 

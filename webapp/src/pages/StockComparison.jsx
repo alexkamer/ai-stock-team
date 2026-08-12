@@ -131,6 +131,39 @@ const CASH_FLOW_ROWS = [
   },
 ]
 
+const PRICE_RATIOS_ROWS = [
+  {
+    key: 'pe_ratio',
+    label: 'Price to Earnings Per Share',
+    get: (t) => (t.price_ratios?.pe_ratio != null ? t.price_ratios.pe_ratio.toFixed(1) : null),
+  },
+  {
+    key: 'forward_pe_ratio',
+    label: 'Forward Price to Earnings Per Share',
+    get: (t) => (t.price_ratios?.forward_pe_ratio != null ? t.price_ratios.forward_pe_ratio.toFixed(1) : null),
+  },
+  {
+    key: 'price_to_fcf',
+    label: 'Price to Free Cash Flow Per Share',
+    get: (t) => (t.price_ratios?.price_to_fcf != null ? t.price_ratios.price_to_fcf.toFixed(1) : null),
+  },
+  {
+    key: 'price_to_book',
+    label: 'Price to Book Value Per Share',
+    get: (t) => (t.price_ratios?.price_to_book != null ? t.price_ratios.price_to_book.toFixed(1) : null),
+  },
+  {
+    key: 'price_to_sales',
+    label: 'Price to Sales Ratio',
+    get: (t) => (t.price_ratios?.price_to_sales != null ? t.price_ratios.price_to_sales.toFixed(1) : null),
+  },
+  {
+    key: 'ev_to_ebitda',
+    label: 'EV/EBITDA',
+    get: (t) => (t.price_ratios?.ev_to_ebitda != null ? t.price_ratios.ev_to_ebitda.toFixed(1) : null),
+  },
+]
+
 function CollapsibleTable({ title, tickers, rows, isOpen, onToggle }) {
   return (
     <div className="card stock-comparison__table">
@@ -190,6 +223,7 @@ export default function StockComparison() {
   const [performanceOpen, setPerformanceOpen] = useState(false)
   const [incomeStatementOpen, setIncomeStatementOpen] = useState(false)
   const [cashFlowOpen, setCashFlowOpen] = useState(false)
+  const [priceRatiosOpen, setPriceRatiosOpen] = useState(false)
   const [interval, setInterval_] = useState('1mo')
   const [rowHistory, setRowHistory] = useState({})
 
@@ -388,6 +422,16 @@ export default function StockComparison() {
           rows={CASH_FLOW_ROWS}
           isOpen={cashFlowOpen}
           onToggle={() => setCashFlowOpen((prev) => !prev)}
+        />
+      )}
+
+      {symbols.length > 1 && !loading && (
+        <CollapsibleTable
+          title="Price Ratios"
+          tickers={tickers}
+          rows={PRICE_RATIOS_ROWS}
+          isOpen={priceRatiosOpen}
+          onToggle={() => setPriceRatiosOpen((prev) => !prev)}
         />
       )}
     </div>
