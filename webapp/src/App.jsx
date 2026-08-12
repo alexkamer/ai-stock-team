@@ -7,6 +7,7 @@ import PrivateCompaniesScreen from './pages/PrivateCompaniesScreen'
 import TickerDetail from './pages/TickerDetail'
 import StockTeam from './pages/StockTeam'
 import ResearchChat from './pages/ResearchChat'
+import StockComparison from './pages/StockComparison'
 import { ResearchChatProvider } from './context/ResearchChatContext'
 import { WatchlistProvider } from './context/WatchlistContext'
 
@@ -23,6 +24,7 @@ export default function App() {
             <Route path="/markets/private-companies" element={<PrivateCompaniesScreen />} />
             <Route path="/tickers/:ticker" element={<TickerDetail />} />
             <Route path="/tickers/:ticker/team" element={<StockTeam />} />
+            <Route path="/research/stock-comparison" element={<StockComparison />} />
             <Route path="/chat" element={<ResearchChat />} />
           </Routes>
         </main>

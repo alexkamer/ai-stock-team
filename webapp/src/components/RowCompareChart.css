@@ -1,0 +1,124 @@
+.row-compare-chart {
+  --series-1: #2a78d6;
+  --series-2: #eb6834;
+  --series-3: #1baf7a;
+  --series-4: #eda100;
+
+  padding: 12px 4px 4px;
+}
+
+@media (prefers-color-scheme: dark) {
+  .row-compare-chart {
+    --series-1: #3987e5;
+    --series-2: #d95926;
+    --series-3: #199e70;
+    --series-4: #c98500;
+  }
+}
+
+.row-compare-chart__loading {
+  padding: 24px 4px;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.row-compare-chart__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 4px;
+}
+
+.row-compare-chart__legend {
+  display: flex;
+  gap: 16px;
+}
+
+.row-compare-chart__interval {
+  display: flex;
+  gap: 2px;
+}
+
+.row-compare-chart__interval-btn {
+  padding: 3px 9px;
+  border: 1px solid var(--border);
+  background: var(--surface-1);
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  border-radius: 3px;
+}
+
+.row-compare-chart__interval-btn--active {
+  background: var(--signal-bg);
+  border-color: var(--signal-border);
+  color: var(--signal);
+}
+
+.row-compare-chart__legend-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.row-compare-chart__legend-swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  flex: none;
+}
+
+.row-compare-chart__plot {
+  position: relative;
+}
+
+.row-compare-chart__axis-label {
+  font-family: var(--mono);
+  font-size: 10px;
+  fill: var(--text-muted);
+}
+
+.row-compare-chart__tooltip {
+  position: absolute;
+  top: 4px;
+  transform: translateX(-8px);
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 8px 10px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.12);
+  pointer-events: none;
+  min-width: 130px;
+}
+
+.row-compare-chart__tooltip-date {
+  display: block;
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-bottom: 4px;
+}
+
+.row-compare-chart__tooltip-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.row-compare-chart__tooltip-swatch {
+  width: 8px;
+  height: 2px;
+  flex: none;
+}
+
+.row-compare-chart__tooltip-value {
+  margin-left: auto;
+  color: var(--text-primary);
+  font-weight: 600;
+}

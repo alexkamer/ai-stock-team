@@ -132,6 +132,40 @@ def get_ticker_stats(ticker: str) -> dict:
     }
 
 
+def get_ticker_overview(ticker: str) -> dict:
+    """Look up valuation, profitability, and company-profile fields for a
+    stock ticker, for the stock comparison page's side-by-side tables.
+
+    Args:
+        ticker: Stock ticker symbol, e.g. 'NVDA'.
+    """
+    info = _get_info(ticker)
+    officers = info.get("companyOfficers") or []
+    ceo = next(
+        (
+            o.get("name")
+            for o in officers
+            if any(t in (o.get("title") or "").lower() for t in ("chief executive", "ceo"))
+        ),
+        None,
+    )
+    return {
+        "market_cap": info.get("marketCap"),
+        "enterprise_value": info.get("enterpriseValue"),
+        "pe_ratio": info.get("trailingPE") or info.get("forwardPE"),
+        "diluted_eps": info.get("trailingEps"),
+        "dividend_rate": info.get("dividendRate"),
+        "dividend_yield": info.get("dividendYield"),
+        "sector": info.get("sector"),
+        "industry": info.get("industry"),
+        "ceo": ceo,
+        "revenue_growth": info.get("revenueGrowth"),
+        "gross_margins": info.get("grossMargins"),
+        "operating_margins": info.get("operatingMargins"),
+        "profit_margins": info.get("profitMargins"),
+    }
+
+
 def get_company_name(ticker: str) -> str:
     """Look up the company name for a stock ticker.
 
@@ -235,6 +269,35 @@ def get_sparkline(ticker: str, period: str = "1mo", benchmark: str | None = None
             result["benchmark_prices"] = [float(close) for close in bench_history["Close"]]
             result["benchmark_ticker"] = benchmark.upper()
     return result
+
+
+def get_market_cap_history(ticker: str, period: str = "1y", interval: str = "1mo") -> dict:
+    """Look up an approximate market-cap-over-time series for a stock ticker,
+    for the stock comparison page's market value line chart.
+
+    yfinance has no historical market-cap endpoint, so this approximates it
+    as close price * current shares outstanding - shares outstanding moves
+    far less often than price, so this tracks the real series closely over
+    the comparison page's typical lookback windows.
+
+    Args:
+        ticker: Stock ticker symbol, e.g. 'NVDA'.
+        period: How far back to look, e.g. '1y', '2y', '5y'.
+        interval: Bar spacing, e.g. '1mo' or '3mo'.
+    """
+    info = _get_info(ticker)
+    shares_outstanding = info.get("sharesOutstanding")
+    if shares_outstanding is None:
+        raise ValueError(f"No shares outstanding found for ticker {ticker!r}")
+
+    history = yf.Ticker(ticker).history(period=period, interval=interval)
+    if history.empty:
+        raise ValueError(f"No price history found for ticker {ticker!r}")
+    fmt = "%b %Y" if interval == "3mo" else "%b '%y"
+    return {
+        "labels": [ts.strftime(fmt) for ts in history.index],
+        "values": [float(close) * float(shares_outstanding) for close in history["Close"]],
+    }
 
 
 def get_news_headlines(ticker: str, limit: int = 5) -> list[str]:

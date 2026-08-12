@@ -41,7 +41,9 @@ from core.tools import (
     get_pe_ratio,
     get_sparkline,
     get_sparkline_prices,
+    get_market_cap_history,
     get_stock_price,
+    get_ticker_overview,
     get_ticker_stats,
     get_top_etfs,
     get_top_gainers,
@@ -142,6 +144,54 @@ def get_watchlist(symbols: str | None = None) -> list[dict]:
     """
     tickers = symbols.split(",") if symbols else DEFAULT_WATCHLIST
     return [quote for quote in parallel_map(_quote, tickers) if quote is not None]
+
+
+def _compare_quote(ticker: str) -> dict | None:
+    """Same drop-bad-symbol behavior as `_quote` - one bad ticker in a
+    comparison shouldn't 500 the whole request.
+    """
+    try:
+        return {
+            "ticker": ticker,
+            "company_name": get_company_name(ticker),
+            "price": get_stock_price(ticker),
+            "day_change_percent": get_day_change(ticker)["percent"],
+            **get_ticker_overview(ticker),
+        }
+    except ValueError:
+        return None
+
+
+@app.get("/tickers/compare")
+def get_ticker_comparison(symbols: str) -> list[dict]:
+    """Batched comparison quotes for a comma-separated ticker list, for the
+    stock comparison page. Plain JSON (no SSE, no LLM call) since this needs
+    to render N tickers side by side as fast as /watchlist does, unlike the
+    single-ticker /tickers/{ticker} SSE stream.
+    """
+    tickers = symbols.split(",")
+    return [quote for quote in parallel_map(_compare_quote, tickers) if quote is not None]
+
+
+def _market_cap_history(args: tuple[str, str, str]) -> dict | None:
+    ticker, period, interval = args
+    try:
+        return {"ticker": ticker, **get_market_cap_history(ticker, period=period, interval=interval)}
+    except ValueError:
+        return None
+
+
+@app.get("/tickers/compare/market-cap-history")
+def get_ticker_compare_market_cap_history(
+    symbols: str, period: str = "1y", interval: str = "1mo"
+) -> list[dict]:
+    """Batched market-cap-over-time series for a comma-separated ticker list,
+    for the stock comparison page's market value line chart. `interval` is
+    '1mo' (default) or '3mo' for a quarterly view.
+    """
+    tickers = symbols.split(",")
+    results = parallel_map(_market_cap_history, [(t, period, interval) for t in tickers])
+    return [r for r in results if r is not None]
 
 
 @app.get("/news")
