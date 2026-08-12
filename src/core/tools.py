@@ -459,25 +459,27 @@ def get_income_statement(ticker: str) -> dict:
 
     latest_period = statement.columns[0]
 
-    def field(name: str, period=latest_period) -> float | None:
+    def field(name: str) -> float | None:
         if name not in statement.index:
             return None
-        value = statement.loc[name, period]
+        value = statement.loc[name, latest_period]
         return float(value) if value is not None and value == value else None  # NaN != NaN
 
-    revenue = field("Total Revenue")
-    revenue_growth = None
-    if revenue is not None and len(statement.columns) > 1:
-        prior_revenue = field("Total Revenue", statement.columns[1])
-        if prior_revenue:
-            revenue_growth = (revenue - prior_revenue) / prior_revenue * 100
+    # Revenue growth comes from `info.revenueGrowth` (most recent quarter vs.
+    # the same quarter a year ago) rather than diffing the two most recent
+    # *annual* columns above - that's what Yahoo Finance's "Revenue Growth"
+    # stat shows, and a company's latest quarter can grow YoY even in a year
+    # its full fiscal-year revenue declined (or vice versa), so the two
+    # aren't interchangeable.
+    info = _get_info(ticker)
+    revenue_growth_fraction = info.get("revenueGrowth")
 
     return {
-        "revenue": revenue,
+        "revenue": field("Total Revenue"),
         "operating_expenses": field("Operating Expense"),
         "operating_income": field("Operating Income"),
         "gross_profit": field("Gross Profit"),
-        "revenue_growth_yoy": revenue_growth,
+        "revenue_growth_yoy": revenue_growth_fraction * 100 if revenue_growth_fraction is not None else None,
     }
 
 
