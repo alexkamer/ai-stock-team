@@ -16,6 +16,7 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "pydantic-ai-slim", extra = ["bedrock"] },
+    { name = "python-dateutil" },
     { name = "pyyaml" },
     { name = "requests" },
     { name = "yfinance" },
@@ -35,6 +36,7 @@ main = [
 [package.metadata]
 requires-dist = [
     { name = "pydantic-ai-slim", extras = ["bedrock"], specifier = ">=2.19.0" },
+    { name = "python-dateutil", specifier = ">=2.9.0" },
     { name = "pyyaml", specifier = ">=6.0.3" },
     { name = "requests", specifier = ">=2.34.2" },
     { name = "yfinance", specifier = ">=1.5.2" },

@@ -3,11 +3,12 @@
 from collections.abc import Callable, Iterable
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
-from datetime import time, timedelta
+from datetime import time
 from typing import TypeVar
 
 import requests
 import yfinance as yf
+from dateutil.relativedelta import relativedelta
 from pydantic_ai import RunContext
 from yfinance import EquityQuery
 
@@ -238,11 +239,16 @@ def get_price_performance(ticker: str) -> dict:
     latest_date = closes.index[-1]
     latest_price = float(closes.iloc[-1])
 
+    # Calendar months/years, not fixed day counts - "3 months ago" means the
+    # same day 3 calendar months back (matching how Yahoo Finance and other
+    # finance sites compute trailing performance), not day-count
+    # approximations like 90 days, which drift onto a different trading day
+    # and can flip the sign of the change entirely.
     window_starts = {
-        "1_week": latest_date - timedelta(days=7),
-        "3_month": latest_date - timedelta(days=90),
+        "1_week": latest_date - relativedelta(weeks=1),
+        "3_month": latest_date - relativedelta(months=3),
         "ytd": latest_date.replace(month=1, day=1),
-        "1_year": closes.index[0],
+        "1_year": latest_date - relativedelta(years=1),
     }
 
     result = {}
