@@ -90,6 +90,7 @@ export default function StockComparison() {
   const [quotes, setQuotes] = useState({})
   const [error, setError] = useState(null)
   const [expandedRow, setExpandedRow] = useState(null)
+  const [performanceOpen, setPerformanceOpen] = useState(false)
   const [interval, setInterval_] = useState('1mo')
   const [rowHistory, setRowHistory] = useState({})
 
@@ -263,35 +264,47 @@ export default function StockComparison() {
 
       {symbols.length > 1 && !loading && (
         <div className="card stock-comparison__table">
-          <span className="eyebrow">Price performance</span>
-          <table>
-            <thead>
-              <tr>
-                <th />
-                {tickers.map((t) => (
-                  <th key={t.ticker}>{t.ticker}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {PERFORMANCE_ROWS.map((row) => (
-                <tr key={row.key}>
-                  <th scope="row">{row.label}</th>
-                  {tickers.map((t) => {
-                    const value = t.price_performance?.[row.key]
-                    return (
-                      <td
-                        key={t.ticker}
-                        className={`num${value == null ? '' : value >= 0 ? ' stock-comparison__good' : ' stock-comparison__bad'}`}
-                      >
-                        {value != null ? signedPct(value) : '—'}
-                      </td>
-                    )
-                  })}
+          <button
+            type="button"
+            className={`stock-comparison__section-toggle${performanceOpen ? ' stock-comparison__section-toggle--open' : ''}`}
+            onClick={() => setPerformanceOpen((prev) => !prev)}
+            aria-expanded={performanceOpen}
+          >
+            <svg width="12" height="12" viewBox="0 0 10 10" aria-hidden="true">
+              <path d="M2 1 L8 5 L2 9" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+            Price Performance
+          </button>
+          {performanceOpen && (
+            <table>
+              <thead>
+                <tr>
+                  <th />
+                  {tickers.map((t) => (
+                    <th key={t.ticker}>{t.ticker}</th>
+                  ))}
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {PERFORMANCE_ROWS.map((row) => (
+                  <tr key={row.key}>
+                    <th scope="row">{row.label}</th>
+                    {tickers.map((t) => {
+                      const value = t.price_performance?.[row.key]
+                      return (
+                        <td
+                          key={t.ticker}
+                          className={`num${value == null ? '' : value >= 0 ? ' stock-comparison__good' : ' stock-comparison__bad'}`}
+                        >
+                          {value != null ? signedPct(value) : '—'}
+                        </td>
+                      )
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
         </div>
       )}
     </div>
