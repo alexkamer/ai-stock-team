@@ -484,24 +484,29 @@ def get_income_statement(ticker: str) -> dict:
 
 
 def get_cash_flow_statement(ticker: str) -> dict:
-    """Look up the most recent annual operating cash flow, capital
+    """Look up trailing-twelve-month operating cash flow, capital
     expenditures, investing cash flow, and free cash flow for a stock
     ticker, for the stock comparison page's cash flow table.
 
     Args:
         ticker: Stock ticker symbol, e.g. 'NVDA'.
     """
-    statement = yf.Ticker(ticker).cash_flow
+    statement = yf.Ticker(ticker).quarterly_cash_flow
     if statement is None or statement.empty:
         raise ValueError(f"No cash flow statement found for ticker {ticker!r}")
 
-    latest_period = statement.columns[0]
+    # TTM (sum of the 4 most recent quarters), matching what finance sites
+    # show as "current" cash flow figures - the latest single annual column
+    # can be many months stale (e.g. NVDA's most recent fiscal year ended
+    # Jan 2026, while the TTM through Apr 2026 shows meaningfully higher
+    # free cash flow as the business kept growing quarter over quarter).
+    last_4_quarters = statement.columns[:4]
 
     def field(name: str) -> float | None:
         if name not in statement.index:
             return None
-        value = statement.loc[name, latest_period]
-        return float(value) if value is not None and value == value else None  # NaN != NaN
+        values = statement.loc[name, last_4_quarters].dropna()
+        return float(values.sum()) if len(values) == len(last_4_quarters) else None
 
     return {
         "operating_cash_flow": field("Operating Cash Flow"),
@@ -520,6 +525,24 @@ def get_price_ratios(ticker: str) -> dict:
         ticker: Stock ticker symbol, e.g. 'NVDA'.
     """
     info = _get_info(ticker)
+    ticker_obj = yf.Ticker(ticker)
+
+    # yfinance's own `forwardPE`/`forwardEps` fields use the *next* fiscal
+    # year's consensus EPS estimate ("+1y" in `earnings_estimate`), but
+    # Yahoo Finance's displayed "Forward P/E" uses the *current* fiscal
+    # year's estimate ("0y") - a full estimate-year earlier. Using
+    # `forwardPE` directly understates forward P/E (e.g. showed 17.4 for
+    # NVDA against Yahoo's ~21-25 depending on as-of date); price / the "0y"
+    # estimate matches Yahoo's convention.
+    price = info.get("currentPrice") or info.get("regularMarketPrice")
+    forward_pe = None
+    if price:
+        try:
+            current_year_eps_estimate = ticker_obj.earnings_estimate.loc["0y", "avg"]
+        except (KeyError, AttributeError):
+            current_year_eps_estimate = None
+        if current_year_eps_estimate:
+            forward_pe = price / current_year_eps_estimate
 
     # Price-to-free-cash-flow has no direct yfinance field, unlike the other
     # five ratios below - derive it as market cap / free cash flow (equal to
@@ -537,7 +560,7 @@ def get_price_ratios(ticker: str) -> dict:
 
     return {
         "pe_ratio": info.get("trailingPE"),
-        "forward_pe_ratio": info.get("forwardPE"),
+        "forward_pe_ratio": forward_pe,
         "price_to_fcf": price_to_fcf,
         "price_to_book": info.get("priceToBook"),
         "price_to_sales": info.get("priceToSalesTrailing12Months"),
