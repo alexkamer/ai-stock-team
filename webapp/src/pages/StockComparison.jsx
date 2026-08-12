@@ -108,6 +108,29 @@ const INCOME_STATEMENT_ROWS = [
   },
 ]
 
+const CASH_FLOW_ROWS = [
+  {
+    key: 'operating_cash_flow',
+    label: 'Cash Flow from Operations',
+    get: (t) => (t.cash_flow_statement?.operating_cash_flow != null ? `$${formatCompact(t.cash_flow_statement.operating_cash_flow)}` : null),
+  },
+  {
+    key: 'capital_expenditures',
+    label: 'Capital Expenditures',
+    get: (t) => (t.cash_flow_statement?.capital_expenditures != null ? `$${formatCompact(t.cash_flow_statement.capital_expenditures)}` : null),
+  },
+  {
+    key: 'investing_cash_flow',
+    label: 'Cash from Investing Activities',
+    get: (t) => (t.cash_flow_statement?.investing_cash_flow != null ? `$${formatCompact(t.cash_flow_statement.investing_cash_flow)}` : null),
+  },
+  {
+    key: 'free_cash_flow',
+    label: 'Free Cash Flow',
+    get: (t) => (t.cash_flow_statement?.free_cash_flow != null ? `$${formatCompact(t.cash_flow_statement.free_cash_flow)}` : null),
+  },
+]
+
 function CollapsibleTable({ title, tickers, rows, isOpen, onToggle }) {
   return (
     <div className="card stock-comparison__table">
@@ -166,6 +189,7 @@ export default function StockComparison() {
   const [expandedRow, setExpandedRow] = useState(null)
   const [performanceOpen, setPerformanceOpen] = useState(false)
   const [incomeStatementOpen, setIncomeStatementOpen] = useState(false)
+  const [cashFlowOpen, setCashFlowOpen] = useState(false)
   const [interval, setInterval_] = useState('1mo')
   const [rowHistory, setRowHistory] = useState({})
 
@@ -354,6 +378,16 @@ export default function StockComparison() {
           rows={INCOME_STATEMENT_ROWS}
           isOpen={incomeStatementOpen}
           onToggle={() => setIncomeStatementOpen((prev) => !prev)}
+        />
+      )}
+
+      {symbols.length > 1 && !loading && (
+        <CollapsibleTable
+          title="Cash Flow"
+          tickers={tickers}
+          rows={CASH_FLOW_ROWS}
+          isOpen={cashFlowOpen}
+          onToggle={() => setCashFlowOpen((prev) => !prev)}
         />
       )}
     </div>

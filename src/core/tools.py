@@ -483,6 +483,34 @@ def get_income_statement(ticker: str) -> dict:
     }
 
 
+def get_cash_flow_statement(ticker: str) -> dict:
+    """Look up the most recent annual operating cash flow, capital
+    expenditures, investing cash flow, and free cash flow for a stock
+    ticker, for the stock comparison page's cash flow table.
+
+    Args:
+        ticker: Stock ticker symbol, e.g. 'NVDA'.
+    """
+    statement = yf.Ticker(ticker).cash_flow
+    if statement is None or statement.empty:
+        raise ValueError(f"No cash flow statement found for ticker {ticker!r}")
+
+    latest_period = statement.columns[0]
+
+    def field(name: str) -> float | None:
+        if name not in statement.index:
+            return None
+        value = statement.loc[name, latest_period]
+        return float(value) if value is not None and value == value else None  # NaN != NaN
+
+    return {
+        "operating_cash_flow": field("Operating Cash Flow"),
+        "capital_expenditures": field("Capital Expenditure"),
+        "investing_cash_flow": field("Investing Cash Flow"),
+        "free_cash_flow": field("Free Cash Flow"),
+    }
+
+
 def get_news_headlines(ticker: str, limit: int = 5) -> list[str]:
     """Look up recent news headlines for a stock ticker.
 
