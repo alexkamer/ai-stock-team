@@ -33,16 +33,39 @@ const OVERVIEW_ROWS = [
     key: 'market_cap',
     label: 'Market value',
     get: (t) => (t.market_cap != null ? `$${formatCompact(t.market_cap)}` : null),
-    historyEndpoint: '/tickers/compare/market-cap-history',
+    metric: 'market_cap',
     chartFormat: (v) => `$${formatCompact(v)}`,
   },
-  { key: 'enterprise_value', label: 'Enterprise value', get: (t) => (t.enterprise_value != null ? `$${formatCompact(t.enterprise_value)}` : null) },
-  { key: 'pe_ratio', label: 'Price to earnings', get: (t) => (t.pe_ratio != null ? t.pe_ratio.toFixed(1) : null) },
-  { key: 'diluted_eps', label: 'Diluted EPS', get: (t) => (t.diluted_eps != null ? `$${t.diluted_eps.toFixed(2)}` : null) },
+  {
+    key: 'enterprise_value',
+    label: 'Enterprise value',
+    get: (t) => (t.enterprise_value != null ? `$${formatCompact(t.enterprise_value)}` : null),
+    metric: 'enterprise_value',
+    chartFormat: (v) => `$${formatCompact(v)}`,
+  },
+  {
+    key: 'pe_ratio',
+    label: 'Price to earnings',
+    get: (t) => (t.pe_ratio != null ? t.pe_ratio.toFixed(1) : null),
+    metric: 'pe_ratio',
+    chartFormat: (v) => v.toFixed(1),
+  },
+  {
+    key: 'diluted_eps',
+    label: 'Diluted EPS',
+    get: (t) => (t.diluted_eps != null ? `$${t.diluted_eps.toFixed(2)}` : null),
+    metric: 'diluted_eps',
+    chartFormat: (v) => `$${v.toFixed(2)}`,
+    // Reported quarterly income-statement data, not derived from price -
+    // there's no monthly granularity to switch to.
+    fixedQuarterly: true,
+  },
   {
     key: 'dividend',
     label: 'Forward dividend & yield',
     get: (t) => formatDividend(t.dividend_rate, t.dividend_yield) ?? 'None',
+    metric: 'dividend_yield',
+    chartFormat: (v) => `${v.toFixed(2)}%`,
   },
   { key: 'sector', label: 'Sector', get: (t) => t.sector ?? null },
   { key: 'industry', label: 'Industry', get: (t) => t.industry ?? null },
@@ -81,10 +104,11 @@ export default function StockComparison() {
 
   useEffect(() => {
     const row = OVERVIEW_ROWS.find((r) => r.key === expandedRow)
-    if (!row?.historyEndpoint || symbols.length === 0) return
-    const cacheKey = `${row.key}:${interval}`
+    if (!row?.metric || symbols.length === 0) return
+    const effectiveInterval = row.fixedQuarterly ? '3mo' : interval
+    const cacheKey = `${row.key}:${effectiveInterval}`
     let cancelled = false
-    getJSON(`${row.historyEndpoint}?symbols=${symbols.join(',')}&interval=${interval}`)
+    getJSON(`/tickers/compare/history?symbols=${symbols.join(',')}&metric=${row.metric}&interval=${effectiveInterval}`)
       .then((data) => {
         if (cancelled) return
         setRowHistory((prev) => ({ ...prev, [cacheKey]: data }))
@@ -178,7 +202,7 @@ export default function StockComparison() {
                   <Fragment key={row.key}>
                     <tr>
                       <th scope="row">
-                        {row.historyEndpoint ? (
+                        {row.metric ? (
                           <button
                             type="button"
                             className={`stock-comparison__row-toggle${isExpanded ? ' stock-comparison__row-toggle--open' : ''}`}
@@ -199,17 +223,21 @@ export default function StockComparison() {
                         <td key={t.ticker}>{row.get(t) ?? '—'}</td>
                       ))}
                     </tr>
-                    {row.historyEndpoint && isExpanded && (
+                    {row.metric && isExpanded && (
                       <tr className="stock-comparison__chart-row">
                         <td colSpan={tickers.length + 1}>
                           <RowCompareChart
                             series={symbols
-                              .map((s) => (rowHistory[`${row.key}:${interval}`] ?? []).find((h) => h.ticker === s))
+                              .map((s) =>
+                                (rowHistory[`${row.key}:${row.fixedQuarterly ? '3mo' : interval}`] ?? []).find(
+                                  (h) => h.ticker === s
+                                )
+                              )
                               .filter(Boolean)}
                             formatValue={row.chartFormat}
                             colorOf={colorOf}
                             interval={interval}
-                            onIntervalChange={setInterval_}
+                            onIntervalChange={row.fixedQuarterly ? null : setInterval_}
                           />
                         </td>
                       </tr>

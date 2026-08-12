@@ -271,14 +271,26 @@ def get_sparkline(ticker: str, period: str = "1mo", benchmark: str | None = None
     return result
 
 
+def _price_history(ticker: str, period: str, interval: str) -> tuple[list[float], list[str]]:
+    """Shared close-price series + formatted date labels for the "derive a
+    metric's history from price" helpers below - each of those metrics
+    (market cap, enterprise value, P/E, dividend yield) moves almost
+    entirely with price over month/quarter timescales, since the other
+    factor (shares outstanding, net debt, EPS, dividend rate) changes far
+    less often. This is an approximation, not a restatement of history.
+    """
+    history = yf.Ticker(ticker).history(period=period, interval=interval)
+    if history.empty:
+        raise ValueError(f"No price history found for ticker {ticker!r}")
+    fmt = "%b %Y" if interval == "3mo" else "%b '%y"
+    closes = [float(close) for close in history["Close"]]
+    labels = [ts.strftime(fmt) for ts in history.index]
+    return closes, labels
+
+
 def get_market_cap_history(ticker: str, period: str = "1y", interval: str = "1mo") -> dict:
     """Look up an approximate market-cap-over-time series for a stock ticker,
-    for the stock comparison page's market value line chart.
-
-    yfinance has no historical market-cap endpoint, so this approximates it
-    as close price * current shares outstanding - shares outstanding moves
-    far less often than price, so this tracks the real series closely over
-    the comparison page's typical lookback windows.
+    for the stock comparison page's market value chart.
 
     Args:
         ticker: Stock ticker symbol, e.g. 'NVDA'.
@@ -290,13 +302,102 @@ def get_market_cap_history(ticker: str, period: str = "1y", interval: str = "1mo
     if shares_outstanding is None:
         raise ValueError(f"No shares outstanding found for ticker {ticker!r}")
 
-    history = yf.Ticker(ticker).history(period=period, interval=interval)
-    if history.empty:
-        raise ValueError(f"No price history found for ticker {ticker!r}")
-    fmt = "%b %Y" if interval == "3mo" else "%b '%y"
+    closes, labels = _price_history(ticker, period, interval)
     return {
-        "labels": [ts.strftime(fmt) for ts in history.index],
-        "values": [float(close) * float(shares_outstanding) for close in history["Close"]],
+        "labels": labels,
+        "values": [close * float(shares_outstanding) for close in closes],
+    }
+
+
+def get_enterprise_value_history(ticker: str, period: str = "1y", interval: str = "1mo") -> dict:
+    """Look up an approximate enterprise-value-over-time series for a stock
+    ticker, for the stock comparison page's enterprise value chart.
+
+    Args:
+        ticker: Stock ticker symbol, e.g. 'NVDA'.
+        period: How far back to look, e.g. '1y', '2y', '5y'.
+        interval: Bar spacing, e.g. '1mo' or '3mo'.
+    """
+    info = _get_info(ticker)
+    shares_outstanding = info.get("sharesOutstanding")
+    total_debt = info.get("totalDebt")
+    total_cash = info.get("totalCash")
+    if shares_outstanding is None or total_debt is None or total_cash is None:
+        raise ValueError(f"No enterprise value inputs found for ticker {ticker!r}")
+    net_debt = float(total_debt) - float(total_cash)
+
+    closes, labels = _price_history(ticker, period, interval)
+    return {
+        "labels": labels,
+        "values": [close * float(shares_outstanding) + net_debt for close in closes],
+    }
+
+
+def get_pe_ratio_history(ticker: str, period: str = "1y", interval: str = "1mo") -> dict:
+    """Look up an approximate price-to-earnings-over-time series for a stock
+    ticker, for the stock comparison page's P/E chart.
+
+    Args:
+        ticker: Stock ticker symbol, e.g. 'NVDA'.
+        period: How far back to look, e.g. '1y', '2y', '5y'.
+        interval: Bar spacing, e.g. '1mo' or '3mo'.
+    """
+    info = _get_info(ticker)
+    eps = info.get("trailingEps")
+    if not eps:
+        raise ValueError(f"No trailing EPS found for ticker {ticker!r}")
+
+    closes, labels = _price_history(ticker, period, interval)
+    return {
+        "labels": labels,
+        "values": [close / float(eps) for close in closes],
+    }
+
+
+def get_dividend_yield_history(ticker: str, period: str = "1y", interval: str = "1mo") -> dict:
+    """Look up an approximate forward-dividend-yield-over-time series for a
+    stock ticker, for the stock comparison page's dividend & yield chart.
+
+    Args:
+        ticker: Stock ticker symbol, e.g. 'NVDA'.
+        period: How far back to look, e.g. '1y', '2y', '5y'.
+        interval: Bar spacing, e.g. '1mo' or '3mo'.
+    """
+    info = _get_info(ticker)
+    dividend_rate = info.get("dividendRate")
+    if not dividend_rate:
+        raise ValueError(f"No dividend rate found for ticker {ticker!r}")
+
+    closes, labels = _price_history(ticker, period, interval)
+    return {
+        "labels": labels,
+        "values": [float(dividend_rate) / close * 100 for close in closes],
+    }
+
+
+def get_diluted_eps_history(ticker: str, period: str = "1y", interval: str = "1mo") -> dict:
+    """Look up reported quarterly diluted EPS for a stock ticker, for the
+    stock comparison page's diluted EPS chart.
+
+    Unlike the other comparison history helpers, this isn't derived from
+    price - it's yfinance's actual reported quarterly income statement
+    figures, so `interval` is ignored (always quarterly) and the lookback
+    is whatever quarters yfinance has on hand (usually the trailing ~5).
+
+    Args:
+        ticker: Stock ticker symbol, e.g. 'NVDA'.
+        period: Unused - kept for a consistent signature with the other history helpers.
+        interval: Unused - kept for a consistent signature with the other history helpers.
+    """
+    statement = yf.Ticker(ticker).quarterly_income_stmt
+    if statement is None or statement.empty or "Diluted EPS" not in statement.index:
+        raise ValueError(f"No quarterly diluted EPS found for ticker {ticker!r}")
+    row = statement.loc["Diluted EPS"].dropna().sort_index()
+    if row.empty:
+        raise ValueError(f"No quarterly diluted EPS found for ticker {ticker!r}")
+    return {
+        "labels": [f"Q{(ts.month - 1) // 3 + 1} {ts.year}" for ts in row.index],
+        "values": [float(v) for v in row],
     }
 
 

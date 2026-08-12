@@ -41,7 +41,11 @@ from core.tools import (
     get_pe_ratio,
     get_sparkline,
     get_sparkline_prices,
+    get_diluted_eps_history,
+    get_dividend_yield_history,
+    get_enterprise_value_history,
     get_market_cap_history,
+    get_pe_ratio_history,
     get_stock_price,
     get_ticker_overview,
     get_ticker_stats,
@@ -173,24 +177,40 @@ def get_ticker_comparison(symbols: str) -> list[dict]:
     return [quote for quote in parallel_map(_compare_quote, tickers) if quote is not None]
 
 
-def _market_cap_history(args: tuple[str, str, str]) -> dict | None:
-    ticker, period, interval = args
+
+# Metrics the comparison page can chart per row - the key is what the
+# frontend's `historyEndpoint` query param sends; the value is the
+# corresponding tools.py history fetcher.
+COMPARE_METRICS = {
+    "market_cap": get_market_cap_history,
+    "enterprise_value": get_enterprise_value_history,
+    "pe_ratio": get_pe_ratio_history,
+    "diluted_eps": get_diluted_eps_history,
+    "dividend_yield": get_dividend_yield_history,
+}
+
+
+def _metric_history(args: tuple[str, str, str, str]) -> dict | None:
+    ticker, metric, period, interval = args
     try:
-        return {"ticker": ticker, **get_market_cap_history(ticker, period=period, interval=interval)}
+        return {"ticker": ticker, **COMPARE_METRICS[metric](ticker, period=period, interval=interval)}
     except ValueError:
         return None
 
 
-@app.get("/tickers/compare/market-cap-history")
-def get_ticker_compare_market_cap_history(
-    symbols: str, period: str = "1y", interval: str = "1mo"
+@app.get("/tickers/compare/history")
+def get_ticker_compare_history(
+    symbols: str, metric: str, period: str = "1y", interval: str = "1mo"
 ) -> list[dict]:
-    """Batched market-cap-over-time series for a comma-separated ticker list,
-    for the stock comparison page's market value line chart. `interval` is
-    '1mo' (default) or '3mo' for a quarterly view.
+    """Batched metric-over-time series for a comma-separated ticker list, for
+    the stock comparison page's per-row line charts. `metric` is one of
+    COMPARE_METRICS' keys; `interval` is '1mo' (default) or '3mo'.
     """
+    fetcher = COMPARE_METRICS.get(metric)
+    if fetcher is None:
+        raise HTTPException(status_code=404, detail=f"Unknown comparison metric {metric!r}")
     tickers = symbols.split(",")
-    results = parallel_map(_market_cap_history, [(t, period, interval) for t in tickers])
+    results = parallel_map(_metric_history, [(t, metric, period, interval) for t in tickers])
     return [r for r in results if r is not None]
 
 
