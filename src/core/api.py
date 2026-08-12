@@ -26,6 +26,7 @@ from agents.main import get_sentiment_streaming
 from agents.stock_team import get_team_analysis
 from core.sse import Final, format_sse, run_agent_streaming
 from core.tools import (
+    DEFAULT_WATCHLIST,
     get_best_historical_performers,
     get_company_name,
     get_day_change,
@@ -76,15 +77,13 @@ PRIVATE_COMPANY_SCREENS = {
     "highest-valuation": get_highest_valuation_private_companies,
 }
 
-# Hardcoded default watchlist for v1 - real CRUD is Phase 4.
-DEFAULT_WATCHLIST = ["NVDA", "AAPL", "MSFT", "GOOGL", "AMZN"]
-
 app = FastAPI(title="AI Stock Team API")
 
 
 class ChatRequest(BaseModel):
     message: str
     session_id: str | None = None
+    watchlist: list[str] | None = None
 
 
 def _sse_event_for(item) -> str | None:
@@ -95,11 +94,15 @@ def _sse_event_for(item) -> str | None:
     """
     match item:
         case FunctionToolCallEvent():
-            return format_sse("tool_call", json.dumps({"tool_name": item.part.tool_name, "args": item.part.args}))
+            return format_sse(
+                "tool_call",
+                json.dumps({"tool_name": item.part.tool_name, "args": item.part.args_as_dict()}),
+            )
         case FunctionToolResultEvent():
             content = item.part.content if hasattr(item.part, "content") else None
             return format_sse(
-                "tool_result", json.dumps({"tool_name": item.part.tool_name, "content": str(content)})
+                "tool_result",
+                json.dumps({"tool_name": item.part.tool_name, "content": content}, default=str),
             )
         case PartStartEvent(part=TextPart(content=text)) if text:
             return format_sse("text", json.dumps({"delta": text}))
@@ -109,17 +112,24 @@ def _sse_event_for(item) -> str | None:
             return None
 
 
-def _quote(ticker: str) -> dict:
-    day_change = get_day_change(ticker)
-    return {
-        "ticker": ticker,
-        "company_name": get_company_name(ticker),
-        "price": get_stock_price(ticker),
-        "day_change_percent": day_change["percent"],
-        "day_change_abs": day_change["absolute"],
-        "sparkline": get_sparkline_prices(ticker),
-        "day_prices": get_day_prices(ticker),
-    }
+def _quote(ticker: str) -> dict | None:
+    """Returns None for a ticker yfinance doesn't recognize, rather than
+    raising - so one bad symbol in a batch (e.g. a mistyped chat mention)
+    drops out of the response instead of 500ing the whole request.
+    """
+    try:
+        day_change = get_day_change(ticker)
+        return {
+            "ticker": ticker,
+            "company_name": get_company_name(ticker),
+            "price": get_stock_price(ticker),
+            "day_change_percent": day_change["percent"],
+            "day_change_abs": day_change["absolute"],
+            "sparkline": get_sparkline_prices(ticker),
+            "day_prices": get_day_prices(ticker),
+        }
+    except ValueError:
+        return None
 
 
 @app.get("/watchlist")
@@ -131,7 +141,7 @@ def get_watchlist(symbols: str | None = None) -> list[dict]:
     (`^GSPC`, `^IXIC`, `^DJI`) instead of the hardcoded watchlist.
     """
     tickers = symbols.split(",") if symbols else DEFAULT_WATCHLIST
-    return parallel_map(_quote, tickers)
+    return [quote for quote in parallel_map(_quote, tickers) if quote is not None]
 
 
 @app.get("/news")
@@ -290,13 +300,18 @@ async def post_chat_message(request: ChatRequest) -> StreamingResponse:
 
     async def event_source():
         yield format_sse("session", json.dumps({"session_id": session_id}))
-        async for item in run_agent_streaming(
-            lambda handler: send_message(session_id, request.message, event_stream_handler=handler)
-        ):
-            if isinstance(item, Final):
-                continue
-            sse_event = _sse_event_for(item)
-            if sse_event is not None:
-                yield sse_event
+        try:
+            async for item in run_agent_streaming(
+                lambda handler: send_message(
+                    session_id, request.message, watchlist=request.watchlist, event_stream_handler=handler
+                )
+            ):
+                if isinstance(item, Final):
+                    continue
+                sse_event = _sse_event_for(item)
+                if sse_event is not None:
+                    yield sse_event
+        except ValueError as e:
+            yield format_sse("error", json.dumps({"detail": str(e)}))
 
     return StreamingResponse(event_source(), media_type="text/event-stream")

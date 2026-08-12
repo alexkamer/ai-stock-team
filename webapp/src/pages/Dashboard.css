@@ -207,16 +207,85 @@
   100% { background-position: -200% 0; }
 }
 
-.watchlist-row--add {
-  color: var(--text-muted);
-  cursor: not-allowed;
-  font-size: 13px;
-}
-
 .watchlist-row--empty {
   display: block;
   color: var(--text-muted);
   font-size: 13px;
+}
+
+/* A watchlist row that carries both a detail link and a remove button -
+   the grid columns live on the inner __link so the remove button can sit
+   outside it without stretching into the price column. */
+.watchlist-row--linked {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0;
+}
+
+.watchlist-row__link {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 1fr 64px 76px;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  min-width: 0;
+}
+
+.watchlist-row__remove {
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  margin-right: 10px;
+  border: none;
+  border-radius: 3px;
+  background: none;
+  color: var(--text-muted);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.12s ease, color 0.12s ease, background 0.12s ease;
+}
+
+.watchlist-row--linked:hover .watchlist-row__remove {
+  opacity: 1;
+}
+
+.watchlist-row__remove:hover {
+  color: var(--critical);
+  background: var(--critical-bg);
+}
+
+.watchlist-row--add {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.watchlist-row__add-input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: none;
+  color: var(--text-primary);
+  font-size: 13px;
+  padding: 0;
+}
+
+.watchlist-row__add-input::placeholder {
+  color: var(--text-muted);
+}
+
+.watchlist-row__add-input:focus {
+  outline: none;
+}
+
+.watchlist-row__add-error {
+  font-size: 12px;
+  color: var(--critical);
+  white-space: nowrap;
 }
 
 /* Market Movers card: labeled ticker groups (Trending, Top gainers, Top

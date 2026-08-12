@@ -7,22 +7,26 @@ import PrivateCompaniesScreen from './pages/PrivateCompaniesScreen'
 import TickerDetail from './pages/TickerDetail'
 import StockTeam from './pages/StockTeam'
 import ResearchChat from './pages/ResearchChat'
+import { ResearchChatProvider } from './context/ResearchChatContext'
+import { WatchlistProvider } from './context/WatchlistContext'
 
 export default function App() {
   return (
-    <>
-      <Header />
-      <main className="page">
-        <Routes>
-          <Route path="/" element={<Dashboard />} />
-          <Route path="/markets/stocks/:screen" element={<StockScreen />} />
-          <Route path="/markets/options/:screen" element={<OptionsScreen />} />
-          <Route path="/markets/private-companies" element={<PrivateCompaniesScreen />} />
-          <Route path="/tickers/:ticker" element={<TickerDetail />} />
-          <Route path="/tickers/:ticker/team" element={<StockTeam />} />
-          <Route path="/chat" element={<ResearchChat />} />
-        </Routes>
-      </main>
-    </>
+    <WatchlistProvider>
+      <ResearchChatProvider>
+        <Header />
+        <main className="page">
+          <Routes>
+            <Route path="/" element={<Dashboard />} />
+            <Route path="/markets/stocks/:screen" element={<StockScreen />} />
+            <Route path="/markets/options/:screen" element={<OptionsScreen />} />
+            <Route path="/markets/private-companies" element={<PrivateCompaniesScreen />} />
+            <Route path="/tickers/:ticker" element={<TickerDetail />} />
+            <Route path="/tickers/:ticker/team" element={<StockTeam />} />
+            <Route path="/chat" element={<ResearchChat />} />
+          </Routes>
+        </main>
+      </ResearchChatProvider>
+    </WatchlistProvider>
   )
 }

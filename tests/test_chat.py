@@ -79,6 +79,40 @@ async def test_send_message_accumulates_history_per_session():
 
 
 @pytest.mark.asyncio
+async def test_send_message_uses_passed_watchlist_over_the_default():
+    test_model = TestModel(custom_output_text="Some reply.")
+
+    with chat.agent.override(model=test_model), patch("core.tools.yf.Ticker") as mock_ticker_cls:
+        mock_ticker_cls.return_value.info = full_info()
+        mock_ticker_cls.return_value.news = [{"content": {"title": "headline"}}]
+        mock_ticker_cls.return_value.history.return_value = default_history()
+
+        await chat.send_message("session-1", "What's on my watchlist?", watchlist=["TSLA", "AMD"])
+
+    # TestModel fuzz-calls get_watchlist_prices, which reads ctx.deps.tickers -
+    # so a Ticker(...) lookup for the passed-in symbols, not the hardcoded
+    # DEFAULT_WATCHLIST, confirms the custom watchlist actually reached the agent.
+    queried_tickers = {call.args[0] for call in mock_ticker_cls.call_args_list}
+    assert {"TSLA", "AMD"} <= queried_tickers
+    assert "NVDA" not in queried_tickers
+
+
+@pytest.mark.asyncio
+async def test_send_message_falls_back_to_default_watchlist_when_none_given():
+    test_model = TestModel(custom_output_text="Some reply.")
+
+    with chat.agent.override(model=test_model), patch("core.tools.yf.Ticker") as mock_ticker_cls:
+        mock_ticker_cls.return_value.info = full_info()
+        mock_ticker_cls.return_value.news = [{"content": {"title": "headline"}}]
+        mock_ticker_cls.return_value.history.return_value = default_history()
+
+        await chat.send_message("session-1", "What's on my watchlist?")
+
+    queried_tickers = {call.args[0] for call in mock_ticker_cls.call_args_list}
+    assert set(chat.DEFAULT_WATCHLIST) <= queried_tickers
+
+
+@pytest.mark.asyncio
 async def test_send_message_keeps_sessions_isolated():
     test_model = TestModel(custom_output_text="Some reply.")
 

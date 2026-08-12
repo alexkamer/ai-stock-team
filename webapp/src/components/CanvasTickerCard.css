@@ -1,0 +1,117 @@
+.canvas-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px;
+  border-radius: 3px;
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  transition: border-color 0.15s ease;
+}
+
+.canvas-card:hover {
+  border-color: var(--signal-border);
+}
+
+.canvas-card--selected {
+  border-color: var(--signal);
+  box-shadow: 0 0 0 1px var(--signal-border);
+}
+
+.canvas-card__compare {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.canvas-card__compare input {
+  cursor: pointer;
+}
+
+.canvas-card__header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.canvas-card__ticker {
+  font-family: var(--mono);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--text-primary);
+  margin-right: 8px;
+}
+
+.canvas-card__name {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.canvas-card__delta {
+  font-size: 13px;
+}
+
+.canvas-card__delta--good {
+  color: var(--good);
+}
+
+.canvas-card__delta--bad {
+  color: var(--critical);
+}
+
+.canvas-card__price-row {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.canvas-card__price {
+  font-size: 22px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.canvas-card__chart {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.canvas-card__chart-label {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.canvas-card__stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.canvas-card__stat {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  font-size: 13px;
+}
+
+.canvas-card__stat-label {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}

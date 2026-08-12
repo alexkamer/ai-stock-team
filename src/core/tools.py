@@ -665,6 +665,13 @@ def get_best_historical_performers(limit: int = 6, offset: int = 0) -> tuple[lis
     return ranked[offset : offset + limit], len(ranked)
 
 
+# Fallback watchlist for a client that hasn't sent one yet (e.g. first
+# visit, before the frontend's localStorage-backed list has anything saved).
+# There's no per-user storage in this app - the frontend is the source of
+# truth for a real watchlist; this only covers the "no list sent" case.
+DEFAULT_WATCHLIST = ["NVDA", "AAPL", "MSFT", "GOOGL", "AMZN"]
+
+
 @dataclass
 class Watchlist:
     """Runtime dependency carrying a user's saved tickers.

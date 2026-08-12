@@ -50,11 +50,11 @@ to the other pages.
   Dow) for ambient context. No new tool logic needed - reuse
   `get_stock_price`/`get_price_history` against index tickers (`^GSPC`,
   `^IXIC`, `^DJI`).
-- **Watchlist grid** - one card per ticker from a hardcoded default list
-  (e.g. NVDA, AAPL, MSFT, GOOGL, AMZN): ticker + company name, current
-  price, day change (color-coded), small sparkline. Click opens Ticker
-  Detail. A trailing "+ Add ticker" tile is visible but disabled/tooltipped
-  - real add/remove is Phase 4.
+- **Watchlist grid** - one row per ticker on the user's (localStorage-backed,
+  Phase 4) watchlist: ticker + company name, current price, day change
+  (color-coded), small sparkline. Click opens Ticker Detail. A trailing
+  "+ Add ticker" input adds a symbol after validating it against a real
+  quote lookup; each row has a remove button.
   - Needs a batch endpoint (e.g. `GET /watchlist` or
     `/tickers?symbols=...`) returning price + change + sparkline data for
     all tickers in one call, not one round trip per card. Decide the exact
@@ -67,8 +67,8 @@ to the other pages.
 Sparkline needs `get_price_history` per ticker, batched behind the one
 endpoint above rather than called per-card client-side.
 
-**Out of scope for v1:** no add/remove UI wired to a backend, no
-auth/user concept.
+**Out of scope for v1:** no auth/user concept - the watchlist is
+per-browser (`localStorage`), not per-account.
 
 ### 2. Ticker Detail
 
@@ -112,24 +112,29 @@ dynamic system prompt injecting today's date + the user's watchlist
 (Lesson 08) so "how's my portfolio doing" resolves without the user typing
 tickers, streaming (Lesson 07).
 
-### 5. Watchlist Settings *(deferred - see Phase 4)*
+### 5. Watchlist Settings *(done - see Phase 4)*
 
 **Purpose:** add/remove the tickers that feed the Dashboard and the Chat's
 system-prompt context.
 
-**Layout:** list with a remove button per ticker + a text input to add
-one, validated against a real lookup before adding so typos fail fast.
+**Layout:** the add/remove UI lives directly on the Dashboard's watchlist
+card rather than a separate settings page - a text input to add a ticker
+(validated against a real lookup before adding so typos fail fast) and a
+remove button per row.
 
-**Powered by:** `Watchlist` dataclass (Lesson 04) - this page is CRUD over
-that. A hardcoded default watchlist is enough until this phase.
+**Powered by:** `Watchlist` dataclass (Lesson 04) on the backend;
+`context/WatchlistContext.jsx` (`localStorage`-backed, no server storage)
+on the frontend.
 
 ## Phases
 
 ### Phase 0 - API contract & state design (done)
 
 - **Routes:** `/tickers/{ticker}` (snapshot), `/tickers/{ticker}/team`
-  (multi-agent analysis), `/chat` (conversational), `/watchlist` (batch quote
-  read for the Dashboard now; CRUD added in Phase 4).
+  (multi-agent analysis), `/chat` (conversational, optionally takes a
+  client-supplied `watchlist`), `/watchlist` (batch quote read - the
+  frontend, not the backend, owns the actual add/remove list; see
+  Phase 4).
 
 - **`GET /watchlist` response shape:**
 
@@ -328,25 +333,74 @@ that. A hardcoded default watchlist is enough until this phase.
   both live dev servers - Dashboard, Ticker Detail, and the Phase-3
   placeholder routes all render without console errors.
 
-### Phase 3 - Stock Team Analysis + Research Chat (not yet started)
+### Phase 3 - Stock Team Analysis + Research Chat (done)
 
-- Stock Team page: render the two specialist cards + streamed synthesizer
+- Stock Team page: renders the two specialist cards + streamed synthesizer
   verdict.
-- Research Chat page: streaming chat UI, message history threading,
-  tool-call-in-flight indicators.
+- Research Chat page (`src/pages/ResearchChat.jsx`) went well beyond the
+  original "standard chat UI" spec:
+  - **Research canvas** (`src/pages/researchCanvas.js` + `components/
+    CanvasTickerCard.jsx`) - a persistent, per-ticker card grid alongside
+    the transcript. Every `tool_result` for a ticker (price, market cap,
+    P/E, day change, price history) folds into that ticker's card instead
+    of scrolling out of view with the message that triggered it. A card
+    also self-fetches a baseline quote (name, price, day change, today's
+    sparkline) via `GET /watchlist?symbols=...` the moment any tool call
+    mentions that ticker, so a card is never just a lone P/E ratio with no
+    price to anchor it. A `get_price_history` mention triggers a follow-up
+    fetch of the real per-point series from `GET /tickers/{ticker}/
+    history` (the same route Ticker Detail's chart uses) so the card's
+    sparkline is real data, not interpolated from the summary stats.
+  - **State lives above `<Routes>`** (`context/ResearchChatContext.jsx`),
+    not inside the page component, so navigating to a ticker's detail page
+    and back leaves the conversation and canvas intact. Also persisted to
+    `localStorage` so a hard refresh restores both (the one remaining gap:
+    the backend's own session history, per Phase 0, is in-memory only and
+    clears on a server restart).
+  - **Suggested follow-ups** (`src/pages/suggestions.js`) - up to 3
+    ticker-aware quick-action chips (market cap, P/E, an unfetched history
+    period, recent news) derived from what a card doesn't have yet, so
+    the obvious next questions don't require typing.
+  - **Comparison mode** (`components/ComparisonTable.jsx`) - a "Compare"
+    checkbox per card; selecting 2+ renders an aligned side-by-side stat
+    table above the transcript.
+  - **Inline, per-message errors** - a tool failure (e.g. an
+    unrecognized ticker) attaches to the specific assistant message that
+    caused it, not a page-wide banner; the global banner is reserved for
+    actual connection failures.
+- Frontend test infra added for this phase: Vitest + Testing Library
+  (`webapp/vite.config.js`, `vitest.setup.js`), covering the canvas
+  reducer, the chat context/provider, suggestions, and the comparison
+  table.
 
-### Phase 4 - Watchlist Settings (not yet started)
+### Phase 4 - Watchlist Settings (done)
 
-- CRUD UI + backend endpoint for the watchlist, replacing the hardcoded
-  default used by Phases 1-3.
-- Wire it into Dashboard (drives the grid) and Chat (drives the dynamic
-  system prompt's portfolio context).
+- `DEFAULT_WATCHLIST` deduped into `core/tools.py` (was independently
+  defined in both `api.py` and `chat.py`).
+- `POST /chat` now accepts an optional `watchlist: list[str]`, threaded
+  into the chat agent's `Watchlist` deps - falls back to
+  `DEFAULT_WATCHLIST` only if the client sends none.
+- No backend storage was added - there's no auth/user concept in this
+  app, so the frontend's `localStorage` (`context/WatchlistContext.jsx`)
+  is the source of truth for a per-browser watchlist, same pattern as the
+  chat transcript's persistence.
+- Dashboard's `+ Add ticker` row is real now: validates a typed symbol
+  against a live `GET /watchlist?symbols=` lookup before adding (typos
+  fail fast with an inline message), and each row has a remove button.
+  Dashboard's quote/news fetches use this list instead of the server
+  default. `ResearchChatContext` passes it on every `/chat` request too,
+  so "what's on my watchlist" in chat reflects what's actually on it.
+- Found and fixed a bug while wiring this up: `GET /watchlist?symbols=`
+  500'd on an unrecognized ticker instead of dropping it from the batch -
+  `_quote` now catches `ValueError` per-ticker like the sibling
+  `/tickers/{ticker}/history` route already did.
 
-### Phase 5 - Polish (not yet started)
+### Phase 5 - Polish (in progress)
 
-- Loading/error states for tool failures (e.g. bad ticker -> `ValueError`
-  from `tools.py` should surface as a real UI error, not a stack trace).
-- Revisit visual design once all pages exist end-to-end.
+- Inline error handling landed as part of Phase 3 (see above) - a bad
+  ticker now surfaces as a message-scoped error, not a stack trace or a
+  page-wide banner.
+- Revisit visual design once all pages exist end-to-end - still open.
 
 ## Notes
 

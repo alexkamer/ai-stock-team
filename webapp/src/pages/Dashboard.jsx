@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { getJSON } from '../api/client'
 import NewsFeed from '../components/NewsFeed'
 import Sparkline from '../components/Sparkline'
+import { useWatchlist } from '../context/WatchlistContext'
 import './Dashboard.css'
 
 const MARKET_INSTRUMENTS = [
@@ -28,7 +29,7 @@ function ChangeBadge({ percent }) {
 /** One labeled group of ticker rows inside a shared card - used for
  * Trending, Most Active, Top Gainers, and Top Losers, which share a row
  * shape but come from different feeds. */
-function TickerGroup({ label, to, tickers, emptyMessage, children }) {
+function TickerGroup({ label, to, tickers, emptyMessage, onRemove, children }) {
   return (
     <div className="ticker-group">
       {to ? (
@@ -45,19 +46,31 @@ function TickerGroup({ label, to, tickers, emptyMessage, children }) {
         : tickers.map((t) => {
             const positive = t.day_change_percent >= 0
             return (
-              <Link key={t.ticker} to={`/tickers/${t.ticker}`} className="watchlist-row">
-                <span className="watchlist-row__name">
-                  <span className="watchlist-row__ticker">{t.ticker}</span>
-                  <span className="watchlist-row__company">{t.company_name}</span>
-                </span>
-                <span className="watchlist-table__col-chart">
-                  <Sparkline values={t.day_prices} width={64} height={28} positive={positive} />
-                </span>
-                <span className="watchlist-table__col-price">
-                  <span className="watchlist-row__price num">${t.price.toFixed(2)}</span>
-                  <ChangeBadge percent={t.day_change_percent} />
-                </span>
-              </Link>
+              <div key={t.ticker} className="watchlist-row watchlist-row--linked">
+                <Link to={`/tickers/${t.ticker}`} className="watchlist-row__link">
+                  <span className="watchlist-row__name">
+                    <span className="watchlist-row__ticker">{t.ticker}</span>
+                    <span className="watchlist-row__company">{t.company_name}</span>
+                  </span>
+                  <span className="watchlist-table__col-chart">
+                    <Sparkline values={t.day_prices} width={64} height={28} positive={positive} />
+                  </span>
+                  <span className="watchlist-table__col-price">
+                    <span className="watchlist-row__price num">${t.price.toFixed(2)}</span>
+                    <ChangeBadge percent={t.day_change_percent} />
+                  </span>
+                </Link>
+                {onRemove && (
+                  <button
+                    type="button"
+                    className="watchlist-row__remove"
+                    aria-label={`Remove ${t.ticker} from watchlist`}
+                    onClick={() => onRemove(t.ticker)}
+                  >
+                    ×
+                  </button>
+                )}
+              </div>
             )
           })}
       {children}
@@ -65,7 +78,55 @@ function TickerGroup({ label, to, tickers, emptyMessage, children }) {
   )
 }
 
+/** Text input + submit for adding a ticker to the watchlist - validated
+ * against a real quote lookup before adding so a typo fails fast with a
+ * message instead of silently sitting in the list forever. */
+function AddTickerRow({ onAdd }) {
+  const [value, setValue] = useState('')
+  const [checking, setChecking] = useState(false)
+  const [invalid, setInvalid] = useState(false)
+
+  async function handleSubmit(e) {
+    e.preventDefault()
+    const symbol = value.trim().toUpperCase()
+    if (!symbol || checking) return
+    setChecking(true)
+    setInvalid(false)
+    try {
+      const quotes = await getJSON(`/watchlist?symbols=${symbol}`)
+      if (quotes.length === 0) {
+        setInvalid(true)
+      } else {
+        onAdd(symbol)
+        setValue('')
+      }
+    } catch {
+      setInvalid(true)
+    } finally {
+      setChecking(false)
+    }
+  }
+
+  return (
+    <form className="watchlist-row watchlist-row--add" onSubmit={handleSubmit}>
+      <input
+        type="text"
+        value={value}
+        onChange={(e) => {
+          setValue(e.target.value)
+          setInvalid(false)
+        }}
+        placeholder="+ Add ticker"
+        disabled={checking}
+        className="watchlist-row__add-input"
+      />
+      {invalid && <span className="watchlist-row__add-error">Not found</span>}
+    </form>
+  )
+}
+
 export default function Dashboard() {
+  const { tickers: watchlistTickers, addTicker, removeTicker } = useWatchlist()
   const [quotes, setQuotes] = useState(null)
   const [marketQuotesList, setMarketQuotesList] = useState(null)
   const [news, setNews] = useState(null)
@@ -90,16 +151,28 @@ export default function Dashboard() {
   }
 
   useEffect(() => {
+    if (watchlistTickers.length === 0) {
+      setQuotes([])
+      setNews([])
+      return
+    }
     let cancelled = false
-    getJSON('/watchlist')
+    getJSON(`/watchlist?symbols=${watchlistTickers.join(',')}`)
       .then((data) => !cancelled && setQuotes(data))
       .catch((e) => !cancelled && setError(e.message))
+    getJSON(`/news?symbols=${watchlistTickers.join(',')}`)
+      .then((data) => !cancelled && setNews(data))
+      .catch(() => !cancelled && setNews([]))
+    return () => {
+      cancelled = true
+    }
+  }, [watchlistTickers])
+
+  useEffect(() => {
+    let cancelled = false
     getJSON(`/watchlist?symbols=${MARKET_INSTRUMENTS.map((i) => i.ticker).join(',')}`)
       .then((data) => !cancelled && setMarketQuotesList(data))
       .catch(() => {})
-    getJSON('/news')
-      .then((data) => !cancelled && setNews(data))
-      .catch(() => !cancelled && setNews([]))
     getJSON('/markets/stocks/trending')
       .then((data) => !cancelled && setTrending(data.items))
       .catch(() => !cancelled && setTrending([]))
@@ -191,10 +264,13 @@ export default function Dashboard() {
               <h2>Watchlist &amp; Movers</h2>
             </div>
             <div className="card watchlist-table ticker-groups">
-              <TickerGroup label="Watchlist" tickers={quotes} emptyMessage="No watchlist tickers yet.">
-                <div className="watchlist-row watchlist-row--add" title="Coming soon">
-                  <span>+ Add ticker</span>
-                </div>
+              <TickerGroup
+                label="Watchlist"
+                tickers={quotes}
+                emptyMessage="No watchlist tickers yet."
+                onRemove={removeTicker}
+              >
+                <AddTickerRow onAdd={addTicker} />
               </TickerGroup>
               <TickerGroup
                 label="Trending"

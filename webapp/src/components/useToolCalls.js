@@ -11,13 +11,13 @@ export function useToolCalls() {
 
   const handleEvent = useCallback((eventName, data) => {
     if (eventName === 'tool_call') {
-      setCalls((prev) => [...prev, { toolName: data.tool_name, done: false }])
+      setCalls((prev) => [...prev, { toolName: data.tool_name, args: data.args, done: false }])
     } else if (eventName === 'tool_result') {
       setCalls((prev) => {
         const index = prev.findIndex((c) => c.toolName === data.tool_name && !c.done)
         if (index === -1) return prev
         const next = [...prev]
-        next[index] = { ...next[index], done: true }
+        next[index] = { ...next[index], done: true, content: data.content }
         return next
       })
     }

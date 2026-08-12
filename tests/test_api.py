@@ -390,6 +390,22 @@ def test_post_chat_streams_session_then_text_deltas(mock_ticker_cls):
 
 
 @patch("core.tools.yf.Ticker")
+def test_post_chat_passes_watchlist_through_to_the_agent(mock_ticker_cls):
+    mock_ticker_cls.return_value = make_ticker(
+        info=full_info(), news=[{"content": {"title": "headline"}}], history=default_history()
+    )
+    test_model = TestModel(custom_output_text="Some reply.")
+
+    with chat.agent.override(model=test_model):
+        response = client.post("/chat", json={"message": "What's on my watchlist?", "watchlist": ["TSLA", "AMD"]})
+
+    assert response.status_code == 200
+    queried_tickers = {call.args[0] for call in mock_ticker_cls.call_args_list}
+    assert {"TSLA", "AMD"} <= queried_tickers
+    assert "NVDA" not in queried_tickers
+
+
+@patch("core.tools.yf.Ticker")
 def test_post_chat_reuses_provided_session_id(mock_ticker_cls):
     mock_ticker_cls.return_value = make_ticker(
         info=full_info(), news=[{"content": {"title": "headline"}}], history=default_history()

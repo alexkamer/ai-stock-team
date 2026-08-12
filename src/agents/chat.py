@@ -13,6 +13,7 @@ from pydantic_ai.messages import ModelMessage
 
 from core.config import load_agent
 from core.tools import (
+    DEFAULT_WATCHLIST,
     Watchlist,
     get_company_name,
     get_day_change,
@@ -23,8 +24,6 @@ from core.tools import (
     get_stock_price,
     get_watchlist_prices,
 )
-
-DEFAULT_WATCHLIST = ["NVDA", "AAPL", "MSFT", "GOOGL", "AMZN"]
 
 agent = load_agent(
     tools=[
@@ -50,12 +49,14 @@ def add_context(ctx: RunContext[Watchlist]) -> str:
 _sessions: dict[str, list[ModelMessage]] = {}
 
 
-async def send_message(session_id: str, text: str, event_stream_handler=None) -> str:
+async def send_message(
+    session_id: str, text: str, watchlist: list[str] | None = None, event_stream_handler=None
+) -> str:
     history = _sessions.get(session_id, [])
     result = await agent.run(
         text,
         message_history=history,
-        deps=Watchlist(tickers=DEFAULT_WATCHLIST),
+        deps=Watchlist(tickers=watchlist or DEFAULT_WATCHLIST),
         event_stream_handler=event_stream_handler,
     )
     _sessions[session_id] = result.all_messages()
