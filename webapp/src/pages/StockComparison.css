@@ -151,3 +151,15 @@
   padding: 0 10px 12px;
   background: var(--paper);
 }
+
+.stock-comparison__table .eyebrow {
+  margin-bottom: 12px;
+}
+
+.stock-comparison__good {
+  color: var(--good);
+}
+
+.stock-comparison__bad {
+  color: var(--critical);
+}

@@ -72,6 +72,17 @@ const OVERVIEW_ROWS = [
   { key: 'ceo', label: 'CEO', get: (t) => t.ceo ?? null },
 ]
 
+function signedPct(n) {
+  return `${n >= 0 ? '+' : ''}${n.toFixed(2)}%`
+}
+
+const PERFORMANCE_ROWS = [
+  { key: '1_week', label: '1 Week' },
+  { key: '3_month', label: '3 Months' },
+  { key: 'ytd', label: 'YTD' },
+  { key: '1_year', label: '1 Year' },
+]
+
 export default function StockComparison() {
   const [searchParams, setSearchParams] = useSearchParams()
   const symbols = parseSymbols(searchParams)
@@ -245,6 +256,40 @@ export default function StockComparison() {
                   </Fragment>
                 )
               })}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {symbols.length > 1 && !loading && (
+        <div className="card stock-comparison__table">
+          <span className="eyebrow">Price performance</span>
+          <table>
+            <thead>
+              <tr>
+                <th />
+                {tickers.map((t) => (
+                  <th key={t.ticker}>{t.ticker}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {PERFORMANCE_ROWS.map((row) => (
+                <tr key={row.key}>
+                  <th scope="row">{row.label}</th>
+                  {tickers.map((t) => {
+                    const value = t.price_performance?.[row.key]
+                    return (
+                      <td
+                        key={t.ticker}
+                        className={`num${value == null ? '' : value >= 0 ? ' stock-comparison__good' : ' stock-comparison__bad'}`}
+                      >
+                        {value != null ? signedPct(value) : '—'}
+                      </td>
+                    )
+                  })}
+                </tr>
+              ))}
             </tbody>
           </table>
         </div>

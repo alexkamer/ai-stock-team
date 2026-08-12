@@ -3,7 +3,7 @@
 from collections.abc import Callable, Iterable
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
-from datetime import time
+from datetime import time, timedelta
 from typing import TypeVar
 
 import requests
@@ -217,6 +217,44 @@ def get_price_history(ticker: str, period: str = "1mo") -> dict:
         "high": float(history["High"].max()),
         "low": float(history["Low"].min()),
     }
+
+
+_PRICE_PERFORMANCE_WINDOWS = ["1_week", "3_month", "ytd", "1_year"]
+
+
+def get_price_performance(ticker: str) -> dict:
+    """Look up percent price change over several trailing windows (1 week,
+    3 months, year-to-date, 1 year) for a stock ticker, for the stock
+    comparison page's price performance table.
+
+    Args:
+        ticker: Stock ticker symbol, e.g. 'NVDA'.
+    """
+    history = yf.Ticker(ticker).history(period="1y")
+    if history.empty:
+        raise ValueError(f"No price history found for ticker {ticker!r}")
+
+    closes = history["Close"]
+    latest_date = closes.index[-1]
+    latest_price = float(closes.iloc[-1])
+
+    window_starts = {
+        "1_week": latest_date - timedelta(days=7),
+        "3_month": latest_date - timedelta(days=90),
+        "ytd": latest_date.replace(month=1, day=1),
+        "1_year": closes.index[0],
+    }
+
+    result = {}
+    for key in _PRICE_PERFORMANCE_WINDOWS:
+        start = window_starts[key]
+        pos = closes.index.searchsorted(start)
+        if pos >= len(closes):
+            result[key] = None
+            continue
+        start_price = float(closes.iloc[pos])
+        result[key] = (latest_price - start_price) / start_price * 100
+    return result
 
 
 def get_sparkline_prices(ticker: str, period: str = "1mo") -> list[float]:
