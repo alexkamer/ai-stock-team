@@ -33,6 +33,7 @@ from core.tools import (
     get_day_prices,
     get_highest_open_interest_options,
     get_highest_valuation_private_companies,
+    get_income_statement,
     get_market_cap,
     get_market_news,
     get_most_active_options,
@@ -163,6 +164,7 @@ def _compare_quote(ticker: str) -> dict | None:
             "day_change_percent": get_day_change(ticker)["percent"],
             **get_ticker_overview(ticker),
             "price_performance": get_price_performance(ticker),
+            "income_statement": get_income_statement(ticker),
         }
     except ValueError:
         return None

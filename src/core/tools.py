@@ -445,6 +445,42 @@ def get_diluted_eps_history(ticker: str, period: str = "1y", interval: str = "1m
     }
 
 
+def get_income_statement(ticker: str) -> dict:
+    """Look up the most recent annual revenue, operating expenses, operating
+    income, gross profit, and year-over-year revenue growth for a stock
+    ticker, for the stock comparison page's income statement table.
+
+    Args:
+        ticker: Stock ticker symbol, e.g. 'NVDA'.
+    """
+    statement = yf.Ticker(ticker).income_stmt
+    if statement is None or statement.empty:
+        raise ValueError(f"No income statement found for ticker {ticker!r}")
+
+    latest_period = statement.columns[0]
+
+    def field(name: str, period=latest_period) -> float | None:
+        if name not in statement.index:
+            return None
+        value = statement.loc[name, period]
+        return float(value) if value is not None and value == value else None  # NaN != NaN
+
+    revenue = field("Total Revenue")
+    revenue_growth = None
+    if revenue is not None and len(statement.columns) > 1:
+        prior_revenue = field("Total Revenue", statement.columns[1])
+        if prior_revenue:
+            revenue_growth = (revenue - prior_revenue) / prior_revenue * 100
+
+    return {
+        "revenue": revenue,
+        "operating_expenses": field("Operating Expense"),
+        "operating_income": field("Operating Income"),
+        "gross_profit": field("Gross Profit"),
+        "revenue_growth_yoy": revenue_growth,
+    }
+
+
 def get_news_headlines(ticker: str, limit: int = 5) -> list[str]:
     """Look up recent news headlines for a stock ticker.
 

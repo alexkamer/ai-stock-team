@@ -77,11 +77,85 @@ function signedPct(n) {
 }
 
 const PERFORMANCE_ROWS = [
-  { key: '1_week', label: '1 Week' },
-  { key: '3_month', label: '3 Months' },
-  { key: 'ytd', label: 'YTD' },
-  { key: '1_year', label: '1 Year' },
+  { key: '1_week', label: '1 Week', get: (t) => (t.price_performance?.['1_week'] != null ? signedPct(t.price_performance['1_week']) : null), signed: true },
+  { key: '3_month', label: '3 Months', get: (t) => (t.price_performance?.['3_month'] != null ? signedPct(t.price_performance['3_month']) : null), signed: true },
+  { key: 'ytd', label: 'YTD', get: (t) => (t.price_performance?.ytd != null ? signedPct(t.price_performance.ytd) : null), signed: true },
+  { key: '1_year', label: '1 Year', get: (t) => (t.price_performance?.['1_year'] != null ? signedPct(t.price_performance['1_year']) : null), signed: true },
 ]
+
+const INCOME_STATEMENT_ROWS = [
+  { key: 'revenue', label: 'Revenue', get: (t) => (t.income_statement?.revenue != null ? `$${formatCompact(t.income_statement.revenue)}` : null) },
+  {
+    key: 'operating_expenses',
+    label: 'Operating Expenses',
+    get: (t) => (t.income_statement?.operating_expenses != null ? `$${formatCompact(t.income_statement.operating_expenses)}` : null),
+  },
+  {
+    key: 'operating_income',
+    label: 'Operating Income',
+    get: (t) => (t.income_statement?.operating_income != null ? `$${formatCompact(t.income_statement.operating_income)}` : null),
+  },
+  {
+    key: 'revenue_growth_yoy',
+    label: 'Revenue Growth YoY',
+    get: (t) => (t.income_statement?.revenue_growth_yoy != null ? signedPct(t.income_statement.revenue_growth_yoy) : null),
+    signed: true,
+  },
+  {
+    key: 'gross_profit',
+    label: 'Gross Profit',
+    get: (t) => (t.income_statement?.gross_profit != null ? `$${formatCompact(t.income_statement.gross_profit)}` : null),
+  },
+]
+
+function CollapsibleTable({ title, tickers, rows, isOpen, onToggle }) {
+  return (
+    <div className="card stock-comparison__table">
+      <button
+        type="button"
+        className={`stock-comparison__section-toggle${isOpen ? ' stock-comparison__section-toggle--open' : ''}`}
+        onClick={onToggle}
+        aria-expanded={isOpen}
+      >
+        <svg width="12" height="12" viewBox="0 0 10 10" aria-hidden="true">
+          <path d="M2 1 L8 5 L2 9" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+        {title}
+      </button>
+      {isOpen && (
+        <table>
+          <thead>
+            <tr>
+              <th />
+              {tickers.map((t) => (
+                <th key={t.ticker}>{t.ticker}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row) => (
+              <tr key={row.key}>
+                <th scope="row">{row.label}</th>
+                {tickers.map((t) => {
+                  const value = row.get(t)
+                  const good = row.signed && value != null ? value.startsWith('+') : null
+                  return (
+                    <td
+                      key={t.ticker}
+                      className={`num${good == null ? '' : good ? ' stock-comparison__good' : ' stock-comparison__bad'}`}
+                    >
+                      {value ?? '—'}
+                    </td>
+                  )
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </div>
+  )
+}
 
 export default function StockComparison() {
   const [searchParams, setSearchParams] = useSearchParams()
@@ -91,6 +165,7 @@ export default function StockComparison() {
   const [error, setError] = useState(null)
   const [expandedRow, setExpandedRow] = useState(null)
   const [performanceOpen, setPerformanceOpen] = useState(false)
+  const [incomeStatementOpen, setIncomeStatementOpen] = useState(false)
   const [interval, setInterval_] = useState('1mo')
   const [rowHistory, setRowHistory] = useState({})
 
@@ -263,49 +338,23 @@ export default function StockComparison() {
       )}
 
       {symbols.length > 1 && !loading && (
-        <div className="card stock-comparison__table">
-          <button
-            type="button"
-            className={`stock-comparison__section-toggle${performanceOpen ? ' stock-comparison__section-toggle--open' : ''}`}
-            onClick={() => setPerformanceOpen((prev) => !prev)}
-            aria-expanded={performanceOpen}
-          >
-            <svg width="12" height="12" viewBox="0 0 10 10" aria-hidden="true">
-              <path d="M2 1 L8 5 L2 9" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-            Price Performance
-          </button>
-          {performanceOpen && (
-            <table>
-              <thead>
-                <tr>
-                  <th />
-                  {tickers.map((t) => (
-                    <th key={t.ticker}>{t.ticker}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {PERFORMANCE_ROWS.map((row) => (
-                  <tr key={row.key}>
-                    <th scope="row">{row.label}</th>
-                    {tickers.map((t) => {
-                      const value = t.price_performance?.[row.key]
-                      return (
-                        <td
-                          key={t.ticker}
-                          className={`num${value == null ? '' : value >= 0 ? ' stock-comparison__good' : ' stock-comparison__bad'}`}
-                        >
-                          {value != null ? signedPct(value) : '—'}
-                        </td>
-                      )
-                    })}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
+        <CollapsibleTable
+          title="Price Performance"
+          tickers={tickers}
+          rows={PERFORMANCE_ROWS}
+          isOpen={performanceOpen}
+          onToggle={() => setPerformanceOpen((prev) => !prev)}
+        />
+      )}
+
+      {symbols.length > 1 && !loading && (
+        <CollapsibleTable
+          title="Income Statement"
+          tickers={tickers}
+          rows={INCOME_STATEMENT_ROWS}
+          isOpen={incomeStatementOpen}
+          onToggle={() => setIncomeStatementOpen((prev) => !prev)}
+        />
       )}
     </div>
   )
