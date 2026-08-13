@@ -31,6 +31,11 @@ class SentimentSummary(BaseModel):
     summary: str = Field(description="One or two sentence summary of the company's current situation")
 
 
+class ArticleSummary(BaseModel):
+    summary: str = Field(description="Two or three sentence summary of the article's content")
+    looks_paywalled: bool = Field(description="Whether the scraped text appeared to be cut off/gated")
+
+
 class TeamVerdict(BaseModel):
     ticker: str = Field(description="Stock ticker symbol, e.g. AAPL")
     verdict: Literal["buy", "hold", "sell"] = Field(

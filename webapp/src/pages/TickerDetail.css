@@ -292,28 +292,10 @@
   color: var(--text-secondary);
 }
 
-.ticker-detail__news .eyebrow {
-  margin-bottom: 10px;
-}
-
-.ticker-detail__news ul {
-  margin: 0;
-  padding: 0;
-  list-style: none;
+.ticker-detail__news {
   display: flex;
   flex-direction: column;
-}
-
-.ticker-detail__news-row {
-  padding: 12px 4px;
-  border-bottom: 1px solid var(--border);
-  font-size: 14px;
-  line-height: 1.5;
-  color: var(--text-secondary);
-}
-
-.ticker-detail__news-row:last-child {
-  border-bottom: none;
+  gap: 10px;
 }
 
 @media (max-width: 720px) {

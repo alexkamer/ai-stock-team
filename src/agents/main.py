@@ -3,9 +3,11 @@
 import argparse
 import sys
 
+import requests
+
 from core.config import load_agent
-from core.models import CompanySnapshot, SentimentSummary
-from core.tools import get_market_cap, get_news_headlines, get_pe_ratio, get_stock_price
+from core.models import ArticleSummary, CompanySnapshot, SentimentSummary
+from core.tools import get_market_cap, get_news_headlines, get_pe_ratio, get_stock_price, scrape_article
 
 agent = load_agent(tools=[get_stock_price, get_market_cap, get_pe_ratio, get_news_headlines])
 
@@ -14,6 +16,11 @@ agent = load_agent(tools=[get_stock_price, get_market_cap, get_pe_ratio, get_new
 # one LLM round trip instead of the four `agent` above needs to re-derive
 # price/market-cap/P/E/news via tool calls it doesn't actually need here.
 sentiment_agent = load_agent()
+
+# Same shape as sentiment_agent - the scraped article text is handed to it
+# directly in the prompt rather than as a tool, since the API route already
+# has it from a plain tools.py call.
+summary_agent = load_agent()
 
 
 def get_snapshot(ticker: str) -> CompanySnapshot:
@@ -42,6 +49,37 @@ async def get_sentiment_streaming(
         output_type=SentimentSummary,
         event_stream_handler=event_stream_handler,
     )
+    return result.output
+
+
+async def get_article_summary(url: str) -> ArticleSummary:
+    """Scrape an article and summarize it.
+
+    Raises ValueError if the article couldn't be fetched at all - a
+    best-effort summary is still produced for a scraped-but-thin/paywalled
+    article (the prompt just tells the model what was recovered so it can
+    caveat accordingly), but a fetch failure means there's no text to
+    summarize in the first place.
+    """
+    try:
+        scraped = scrape_article(url)
+    except requests.RequestException as e:
+        raise ValueError(f"Couldn't fetch article at {url!r}: {e}") from e
+
+    if not scraped["text"].strip():
+        raise ValueError(f"No readable text found at {url!r}")
+
+    paywall_note = (
+        "Note: this text may be a truncated/paywalled excerpt rather than the full article - "
+        "summarize what's here and don't imply you've read more than this.\n\n"
+        if scraped["looks_paywalled"]
+        else ""
+    )
+    result = await summary_agent.run(
+        f"{paywall_note}Summarize this article in two or three sentences:\n\n{scraped['text']}",
+        output_type=ArticleSummary,
+    )
+    result.output.looks_paywalled = scraped["looks_paywalled"]
     return result.output
 
 

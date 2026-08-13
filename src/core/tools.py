@@ -8,6 +8,7 @@ from typing import TypeVar
 
 import requests
 import yfinance as yf
+from bs4 import BeautifulSoup
 from dateutil.relativedelta import relativedelta
 from pydantic_ai import RunContext
 from yfinance import EquityQuery
@@ -667,6 +668,51 @@ def _try_day_change(ticker: str) -> float | None:
         return get_day_change(ticker)["percent"]
     except ValueError:
         return None
+
+
+# Phrases that show up in the gate/teaser text publishers leave behind when
+# the rest of an article is cut off - checked case-insensitively against the
+# scraped text as a cheap paywall signal, no LLM call needed.
+_PAYWALL_PHRASES = [
+    "subscribe to continue",
+    "subscribe to read",
+    "sign in to continue",
+    "sign in to read",
+    "log in to continue",
+    "already a subscriber",
+    "create a free account to",
+    "to continue reading",
+    "this content is for subscribers",
+    "become a member to",
+]
+
+# Below this word count a scraped article is almost certainly a teaser/stub
+# rather than the real body, regardless of gate phrases.
+_PAYWALL_MIN_WORDS = 80
+
+
+def scrape_article(url: str) -> dict:
+    """Fetch an article URL and extract its main text.
+
+    Args:
+        url: Article URL, typically from get_market_news's `url` field.
+    """
+    response = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=10)
+    response.raise_for_status()
+
+    soup = BeautifulSoup(response.text, "html.parser")
+    for tag in soup(["script", "style", "nav", "header", "footer", "aside"]):
+        tag.decompose()
+
+    container = soup.find("article") or soup.body or soup
+    paragraphs = [p.get_text(" ", strip=True) for p in container.find_all("p")]
+    text = "\n".join(p for p in paragraphs if p)
+
+    word_count = len(text.split())
+    lowered = text.lower()
+    looks_paywalled = word_count < _PAYWALL_MIN_WORDS or any(phrase in lowered for phrase in _PAYWALL_PHRASES)
+
+    return {"text": text, "word_count": word_count, "looks_paywalled": looks_paywalled}
 
 
 def get_day_prices(ticker: str) -> list[float]:

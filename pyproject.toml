@@ -5,6 +5,7 @@ description = "AI-powered stock snapshot CLI, built on pydantic-ai + yfinance"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "beautifulsoup4>=4.15.0",
     "pydantic-ai-slim[bedrock]>=2.19.0",
     "python-dateutil>=2.9.0",
     "pyyaml>=6.0.3",

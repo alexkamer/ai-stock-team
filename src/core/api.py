@@ -22,7 +22,7 @@ from pydantic_ai.messages import (
 )
 
 from agents.chat import send_message
-from agents.main import get_sentiment_streaming
+from agents.main import get_article_summary, get_sentiment_streaming
 from agents.stock_team import get_team_analysis
 from core.sse import Final, format_sse, run_agent_streaming
 from core.tools import (
@@ -242,6 +242,17 @@ def get_home_news(symbols: str | None = None, category: str | None = None, limit
     return get_market_news(tickers, limit=limit)
 
 
+@app.get("/articles/summary")
+async def get_article_summary_route(url: str) -> dict:
+    """Scrape and summarize a news article, for the "Summarize" button on a
+    news row's URL."""
+    try:
+        summary = await get_article_summary(url)
+    except ValueError as e:
+        raise HTTPException(status_code=502, detail=str(e)) from e
+    return summary.model_dump()
+
+
 def _screen_or_404(registry: dict, screen: str, limit: int) -> list[dict]:
     fetcher = registry.get(screen)
     if fetcher is None:
@@ -309,6 +320,7 @@ async def get_ticker_snapshot(ticker: str) -> StreamingResponse:
                 "market_cap": get_market_cap(ticker),
                 "pe_ratio": get_pe_ratio(ticker),
                 "news_headlines": get_news_headlines(ticker),
+                "news": get_market_news([ticker], limit=8),
                 **get_day_change(ticker),
                 **get_ticker_stats(ticker),
             }
@@ -327,6 +339,7 @@ async def get_ticker_snapshot(ticker: str) -> StreamingResponse:
                     "day_change_percent": quote["percent"],
                     "day_change_abs": quote["absolute"],
                     "news_headlines": quote["news_headlines"],
+                    "news": quote["news"],
                     "fifty_two_week_low": quote["fifty_two_week_low"],
                     "fifty_two_week_high": quote["fifty_two_week_high"],
                     "fifty_two_week_change_percent": quote["fifty_two_week_change_percent"],

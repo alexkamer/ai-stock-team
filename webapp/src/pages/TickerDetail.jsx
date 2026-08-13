@@ -4,6 +4,7 @@ import { getJSON, streamSSE } from '../api/client'
 import { useToolCalls } from '../components/useToolCalls'
 import ToolCallPill from '../components/ToolCallPill'
 import PriceChart from '../components/PriceChart'
+import NewsFeed from '../components/NewsFeed'
 import './TickerDetail.css'
 
 const SENTIMENT_LABEL = { bullish: 'Bullish', bearish: 'Bearish', neutral: 'Neutral' }
@@ -351,16 +352,10 @@ export default function TickerDetail() {
         />
       </div>
 
-      {quote?.news_headlines && (
-        <div className="card ticker-detail__news">
+      {(quote === null || quote?.news_headlines) && (
+        <div className="ticker-detail__news">
           <span className="eyebrow">Recent news</span>
-          <ul>
-            {quote.news_headlines.map((headline, i) => (
-              <li key={i} className="ticker-detail__news-row">
-                {headline}
-              </li>
-            ))}
-          </ul>
+          <NewsFeed articles={quote?.news ?? null} showTicker={false} summarizable />
         </div>
       )}
     </div>
