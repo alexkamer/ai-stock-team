@@ -340,6 +340,7 @@ async def get_ticker_snapshot(ticker: str) -> StreamingResponse:
                     "pe_ratio": quote["pe_ratio"],
                     "day_change_percent": quote["percent"],
                     "day_change_abs": quote["absolute"],
+                    "extended_hours": quote["extended_hours"],
                     "news_headlines": quote["news_headlines"],
                     "news": quote["news"],
                     "similar_tickers": quote["similar_tickers"],

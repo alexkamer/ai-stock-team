@@ -104,13 +104,44 @@
 
 .ticker-detail__price-block {
   display: flex;
-  align-items: center;
-  gap: 10px;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+}
+
+.ticker-detail__price-block > .ticker-detail__price,
+.ticker-detail__price-block > .change-badge {
+  display: inline-flex;
 }
 
 .ticker-detail__price {
   font-size: 36px;
   font-weight: 700;
+}
+
+.ticker-detail__extended-price {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.ticker-detail__extended-label {
+  font-family: var(--mono);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.ticker-detail__extended-value {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.change-badge--small {
+  font-size: 11px;
+  padding: 2px 6px;
 }
 
 .ticker-detail__stats {

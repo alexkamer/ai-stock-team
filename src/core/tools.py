@@ -182,20 +182,51 @@ def get_company_name(ticker: str) -> str:
 
 
 def get_day_change(ticker: str) -> dict:
-    """Look up the current day's price change for a stock ticker.
+    """Look up the current day's price change for a stock ticker, plus
+    pre/post-market price and change if the market is currently in an
+    extended session - for the ticker detail page's header, which shows a
+    second "pre-market"/"after hours" price line only when one applies.
+
+    Yahoo's `marketState` is one of PREPRE/PRE (before the open),
+    REGULAR (during regular hours), POST/POSTPOST (after the close), or
+    CLOSED (weekend/holiday, no extended session) - `hasPrePostMarketData`
+    additionally gates whether Yahoo actually has a pre/post quote to show,
+    which trails the state change briefly right at each session boundary.
 
     Args:
         ticker: Stock ticker symbol, e.g. 'NVDA'.
 
     Returns:
-        A dict with 'percent' and 'absolute' day change, both signed floats.
+        A dict with 'percent' and 'absolute' day change (both signed floats,
+        vs. regular-session previous close), plus 'extended_hours' - either
+        None, or a dict with 'session' ('pre' or 'post'), 'price', and
+        signed 'percent'/'absolute' change for that session.
     """
     info = _get_info(ticker)
     percent = info.get("regularMarketChangePercent")
     absolute = info.get("regularMarketChange")
     if percent is None or absolute is None:
         raise ValueError(f"No day change found for ticker {ticker!r}")
-    return {"percent": float(percent), "absolute": float(absolute)}
+
+    extended_hours = None
+    market_state = info.get("marketState")
+    if info.get("hasPrePostMarketData"):
+        if market_state in ("PRE", "PREPRE") and info.get("preMarketPrice") is not None:
+            extended_hours = {
+                "session": "pre",
+                "price": float(info["preMarketPrice"]),
+                "percent": float(info.get("preMarketChangePercent") or 0.0),
+                "absolute": float(info.get("preMarketChange") or 0.0),
+            }
+        elif market_state in ("POST", "POSTPOST") and info.get("postMarketPrice") is not None:
+            extended_hours = {
+                "session": "post",
+                "price": float(info["postMarketPrice"]),
+                "percent": float(info.get("postMarketChangePercent") or 0.0),
+                "absolute": float(info.get("postMarketChange") or 0.0),
+            }
+
+    return {"percent": float(percent), "absolute": float(absolute), "extended_hours": extended_hours}
 
 
 def get_price_history(ticker: str, period: str = "1mo") -> dict:

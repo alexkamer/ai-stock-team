@@ -250,6 +250,22 @@ export default function TickerDetail() {
               <span className={`change-badge ${positive ? 'change-badge--good' : 'change-badge--bad'}`}>
                 {positive ? '↑' : '↓'} {Math.abs(quote.day_change_percent).toFixed(2)}% (${Math.abs(quote.day_change_abs).toFixed(2)})
               </span>
+              {quote.extended_hours && (
+                <div className="ticker-detail__extended-price">
+                  <span className="ticker-detail__extended-label">
+                    {quote.extended_hours.session === 'pre' ? 'Pre-market' : 'After hours'}
+                  </span>
+                  <span className="ticker-detail__extended-value num">${quote.extended_hours.price.toFixed(2)}</span>
+                  <span
+                    className={`change-badge change-badge--small ${
+                      quote.extended_hours.percent >= 0 ? 'change-badge--good' : 'change-badge--bad'
+                    }`}
+                  >
+                    {quote.extended_hours.percent >= 0 ? '↑' : '↓'} {Math.abs(quote.extended_hours.percent).toFixed(2)}%
+                    (${Math.abs(quote.extended_hours.absolute).toFixed(2)})
+                  </span>
+                </div>
+              )}
             </div>
           ) : (
             <span className="spinner" />
