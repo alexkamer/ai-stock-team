@@ -28,6 +28,17 @@ This project calls Claude through AWS Bedrock, so you'll need AWS credentials wi
 uv sync --group main --group dev
 ```
 
+The app has user accounts backed by a local SQLite DB. Set up the schema and
+seed a standard admin account for local testing:
+
+```bash
+uv run alembic upgrade head
+uv run python -m core.seed_admin   # creates admin@example.com, prints/writes its password to .admin_credentials
+```
+
+`.admin_credentials` is gitignored — read it locally to get the admin
+password; rerunning `seed_admin` is a no-op if the account already exists.
+
 ## Running it
 
 **CLI** — one-shot snapshot for a ticker:
@@ -56,12 +67,18 @@ The Vite dev server proxies `/api` to the backend, so run both together while de
 
 **Dashboard (`/`)** — the landing page. A horizontally-scrolling strip of
 major indices/commodities (S&P 500, Nasdaq, Dow, VIX, Gold, Bitcoin, Crude
-Oil) up top, then a watchlist card with live prices, day-change badges, and
-sparklines. Add a ticker with the input at the bottom of the watchlist (it's
-validated against a real quote before it's added — a typo gets rejected
-inline) and remove one by hovering a row and clicking the ×. Below that,
-market-mover panels — Trending, Most Active, Top Gainers, Top Losers — each
-linking through to a full paginated screen.
+Oil) up top, then a news section: a featured-story carousel, a plain list of
+the rest of your watchlist's headlines, three category columns (Top
+Stories, Markets & Economy, Tech & AI), and a More News overflow section for
+everything else. Articles are picked by editorial quality (Yahoo's editors'
+pick flag and thumbnail presence) rather than pure recency, and each is
+tagged with a "TICKER +1.23%" day-change badge where a source ticker is
+known. Alongside that, a watchlist card with live prices, day-change badges,
+and sparklines — add a ticker with the input at the bottom (it's validated
+against a real quote before it's added — a typo gets rejected inline) and
+remove one by hovering a row and clicking the ×. Below that, market-mover
+panels — Trending, Most Active, Top Gainers, Top Losers — each linking
+through to a full paginated screen.
 
 **Ticker Detail (`/tickers/AAPL`)** — click any ticker anywhere in the app to
 land here. Streams in a price/market-cap/P/E header, an AI-generated

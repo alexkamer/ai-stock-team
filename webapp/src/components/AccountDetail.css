@@ -1,0 +1,91 @@
+.account-detail h3 {
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  margin: 1.25rem 0 0.5rem;
+}
+
+.account-detail h3:first-child {
+  margin-top: 0;
+}
+
+.account-detail__empty {
+  color: var(--text-muted);
+  font-size: 0.875rem;
+  margin: 0;
+}
+
+.account-detail__error {
+  color: var(--critical);
+}
+
+.account-detail__balances {
+  display: flex;
+  gap: 1rem;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+
+.account-detail__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+}
+
+.account-detail__table th {
+  text-align: left;
+  padding: 0.3rem 0.5rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.account-detail__table th button {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--text-muted);
+  font: inherit;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.account-detail__table th button:hover {
+  color: var(--text-primary);
+}
+
+.account-detail__table td {
+  padding: 0.35rem 0.5rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.account-detail__table tr:last-child td {
+  border-bottom: none;
+}
+
+.account-detail__table .text-good {
+  color: var(--good);
+}
+
+.account-detail__table .text-critical {
+  color: var(--critical);
+}
+
+.account-detail__transaction-type {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  padding: 0.1rem 0.4rem;
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--text-secondary);
+}
+
+.account-detail__transaction-type--buy {
+  background: var(--good-bg);
+  color: var(--good);
+}
+
+.account-detail__transaction-type--sell {
+  background: var(--critical-bg);
+  color: var(--critical);
+}

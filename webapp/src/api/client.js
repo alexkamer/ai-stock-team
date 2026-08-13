@@ -1,11 +1,37 @@
 const BASE_URL = '/api'
 
+async function throwForStatus(response) {
+  const body = await response.json().catch(() => ({}))
+  const error = new Error(body.detail || `Request failed: ${response.status}`)
+  error.status = response.status
+  throw error
+}
+
 export async function getJSON(path) {
   const response = await fetch(`${BASE_URL}${path}`)
-  if (!response.ok) {
-    const body = await response.json().catch(() => ({}))
-    throw new Error(body.detail || `Request failed: ${response.status}`)
-  }
+  if (!response.ok) await throwForStatus(response)
+  return response.json()
+}
+
+/**
+ * POST a JSON body and parse a JSON response - used by the auth endpoints
+ * (login/signup/logout), which aren't SSE streams and don't fit streamSSE.
+ * The session cookie is sent/received automatically since these are
+ * same-origin requests (via Vite's /api proxy in dev).
+ */
+export async function postJSON(path, body) {
+  const response = await fetch(`${BASE_URL}${path}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body ?? {}),
+  })
+  if (!response.ok) await throwForStatus(response)
+  return response.json()
+}
+
+export async function deleteJSON(path) {
+  const response = await fetch(`${BASE_URL}${path}`, { method: 'DELETE' })
+  if (!response.ok) await throwForStatus(response)
   return response.json()
 }
 

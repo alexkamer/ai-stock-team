@@ -14,3 +14,12 @@ lessons/
 
 # OS
 .DS_Store
+
+# Local secrets
+.env
+
+# Local SQLite database
+data/
+
+# Seeded local admin account credentials
+.admin_credentials

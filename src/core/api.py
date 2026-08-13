@@ -24,6 +24,8 @@ from pydantic_ai.messages import (
 from agents.chat import send_message
 from agents.main import get_article_summary, get_sentiment_streaming
 from agents.stock_team import get_team_analysis
+from core.routers import auth as auth_router
+from core.routers import brokerage as brokerage_router
 from core.sse import Final, format_sse, run_agent_streaming
 from core.tools import (
     DEFAULT_WATCHLIST,
@@ -90,6 +92,8 @@ PRIVATE_COMPANY_SCREENS = {
 }
 
 app = FastAPI(title="AI Stock Team API")
+app.include_router(auth_router.router)
+app.include_router(brokerage_router.router)
 
 
 class ChatRequest(BaseModel):

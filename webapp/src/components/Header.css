@@ -135,3 +135,39 @@
 .app-header__search button:hover {
   opacity: 0.88;
 }
+
+.app-header__account {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 13px;
+}
+
+.app-header__account a {
+  color: var(--text-secondary);
+  text-decoration: none;
+}
+
+.app-header__account a:hover {
+  color: var(--text-primary);
+}
+
+.app-header__account-email {
+  color: var(--text-secondary);
+  font-family: var(--mono);
+}
+
+.app-header__account button {
+  padding: 6px 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: 3px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.app-header__account button:hover {
+  color: var(--text-primary);
+  border-color: var(--text-secondary);
+}

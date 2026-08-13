@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
+import { useAuth } from '../context/AuthContext'
 import './Header.css'
 
 const NAV_LINKS = [
@@ -13,12 +14,19 @@ const NAV_LINKS = [
     ],
   },
   { to: '/chat', label: 'Chat', end: true },
+  { to: '/brokerage', label: 'Brokerage', end: true },
 ]
 
 export default function Header() {
   const [query, setQuery] = useState('')
   const navigate = useNavigate()
   const location = useLocation()
+  const { user, isLoading, logout } = useAuth()
+
+  async function handleLogout() {
+    await logout()
+    navigate('/')
+  }
 
   function handleSubmit(e) {
     e.preventDefault()
@@ -82,6 +90,23 @@ export default function Header() {
           />
           <button type="submit">Go</button>
         </form>
+        {!isLoading && (
+          <div className="app-header__account">
+            {user ? (
+              <>
+                <span className="app-header__account-email">{user.email}</span>
+                <button type="button" onClick={handleLogout}>
+                  Log out
+                </button>
+              </>
+            ) : (
+              <>
+                <Link to="/login">Log in</Link>
+                <Link to="/signup">Sign up</Link>
+              </>
+            )}
+          </div>
+        )}
       </div>
     </header>
   )

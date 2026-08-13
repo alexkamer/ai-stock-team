@@ -8,6 +8,8 @@ from pydantic_ai import Agent
 from pydantic_ai.models.bedrock import BedrockConverseModel
 from pydantic_ai.providers.bedrock import BedrockProvider
 
+import core.env  # noqa: F401 - loads .env, so AWS_* creds can come from it too
+
 CONFIG_PATH = Path(__file__).parent / "config.yaml"
 
 
