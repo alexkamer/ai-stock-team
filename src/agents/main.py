@@ -64,10 +64,10 @@ async def get_article_summary(url: str) -> ArticleSummary:
     try:
         scraped = scrape_article(url)
     except requests.RequestException as e:
-        raise ValueError(f"Couldn't fetch article at {url!r}: {e}") from e
+        raise ValueError("Couldn't fetch this article - the site may be blocking automated requests") from e
 
     if not scraped["text"].strip():
-        raise ValueError(f"No readable text found at {url!r}")
+        raise ValueError("No readable text found at this article's URL")
 
     paywall_note = (
         "Note: this text may be a truncated/paywalled excerpt rather than the full article - "

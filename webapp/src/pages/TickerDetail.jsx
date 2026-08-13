@@ -3,8 +3,10 @@ import { useParams } from 'react-router-dom'
 import { getJSON, streamSSE } from '../api/client'
 import { useToolCalls } from '../components/useToolCalls'
 import ToolCallPill from '../components/ToolCallPill'
+import { Link } from 'react-router-dom'
 import PriceChart from '../components/PriceChart'
 import NewsFeed from '../components/NewsFeed'
+import Sparkline from '../components/Sparkline'
 import './TickerDetail.css'
 
 const SENTIMENT_LABEL = { bullish: 'Bullish', bearish: 'Bearish', neutral: 'Neutral' }
@@ -26,6 +28,36 @@ function saveChartPrefs(prefs) {
   } catch {
     // localStorage unavailable (private browsing, quota) - preference just won't persist
   }
+}
+
+function SimilarTickers({ tickers }) {
+  return (
+    <div className="card ticker-detail__similar">
+      <span className="eyebrow">Similar tickers</span>
+      {tickers === null
+        ? Array.from({ length: 5 }, (_, i) => <div key={i} className="similar-row similar-row--loading" />)
+        : tickers.length === 0
+        ? <div className="similar-row similar-row--empty">No comparable tickers found.</div>
+        : tickers.map((t) => {
+            const positive = t.day_change_percent >= 0
+            return (
+              <Link key={t.ticker} to={`/tickers/${t.ticker}`} className="similar-row">
+                <span className="similar-row__name">
+                  <span className="similar-row__ticker">{t.ticker}</span>
+                  <span className="similar-row__company">{t.company_name}</span>
+                </span>
+                <Sparkline values={t.day_prices} width={56} height={24} positive={positive} />
+                <span className="similar-row__price-block">
+                  <span className="similar-row__price num">${t.price.toFixed(2)}</span>
+                  <span className={`change-badge ${positive ? 'change-badge--good' : 'change-badge--bad'}`}>
+                    {positive ? '+' : ''}{t.day_change_percent.toFixed(2)}%
+                  </span>
+                </span>
+              </Link>
+            )
+          })}
+    </div>
+  )
 }
 
 function SentimentBadge({ sentiment }) {
@@ -225,139 +257,147 @@ export default function TickerDetail() {
         </div>
       </div>
 
-      <div className="ticker-detail__stats">
-        <div className="card ticker-detail__stat">
-          <span className="ticker-detail__stat-label">Market cap</span>
-          <span className="ticker-detail__stat-value num">
-            {quote ? `$${formatCompact(quote.market_cap)}` : '—'}
-          </span>
-        </div>
-        <div className="card ticker-detail__stat">
-          <span className="ticker-detail__stat-label">P/E ratio</span>
-          <span className="ticker-detail__stat-value num">
-            {quote ? quote.pe_ratio.toFixed(1) : '—'}
-            {quote?.forward_pe && <span className="ticker-detail__stat-sub"> / fwd {quote.forward_pe.toFixed(1)}</span>}
-          </span>
-        </div>
-        <div className="card ticker-detail__stat">
-          <span className="ticker-detail__stat-label">Volume</span>
-          <span className="ticker-detail__stat-value num">
-            {quote ? formatCompact(quote.volume) : '—'}
-            {quote?.avg_volume_3m && (
-              <span className="ticker-detail__stat-sub"> / avg {formatCompact(quote.avg_volume_3m)}</span>
-            )}
-          </span>
-        </div>
-        <div className="card ticker-detail__stat">
-          <span className="ticker-detail__stat-label">Dividend yield</span>
-          <span className="ticker-detail__stat-value num">
-            {quote?.dividend_yield ? `${quote.dividend_yield.toFixed(2)}%` : '—'}
-          </span>
-        </div>
-        <div className="card ticker-detail__stat ticker-detail__stat--wide">
-          <span className="ticker-detail__stat-label">52-week range</span>
-          {quote ? (
-            <RangeBar low={quote.fifty_two_week_low} high={quote.fifty_two_week_high} value={quote.price} />
-          ) : (
-            <span className="ticker-detail__stat-value num">—</span>
-          )}
-        </div>
-        <div className="card ticker-detail__stat">
-          <span className="ticker-detail__stat-label">52-week change</span>
-          <span
-            className={`ticker-detail__stat-value num ${
-              quote?.fifty_two_week_change_percent != null
-                ? quote.fifty_two_week_change_percent >= 0
-                  ? 'ticker-detail__stat-value--good'
-                  : 'ticker-detail__stat-value--bad'
-                : ''
-            }`}
-          >
-            {quote?.fifty_two_week_change_percent != null
-              ? `${quote.fifty_two_week_change_percent >= 0 ? '+' : ''}${quote.fifty_two_week_change_percent.toFixed(1)}%`
-              : '—'}
-          </span>
-        </div>
-        <div className="card ticker-detail__stat">
-          <span className="ticker-detail__stat-label">Beta</span>
-          <span className="ticker-detail__stat-value num">{quote?.beta != null ? quote.beta.toFixed(2) : '—'}</span>
-        </div>
-        <div className="card ticker-detail__stat">
-          <span
-            className="ticker-detail__stat-label"
-            title="Average of analysts' 1 (Strong Buy) to 5 (Strong Sell) ratings"
-          >
-            Analyst rating
-          </span>
-          <span className="ticker-detail__stat-value">{quote?.analyst_rating ?? '—'}</span>
-          <span className="ticker-detail__stat-caption">1 = Strong Buy · 5 = Strong Sell</span>
-        </div>
-        <div className="card ticker-detail__stat ticker-detail__stat--wide">
-          <span className="ticker-detail__stat-label">
-            Analyst price target
-            {quote?.analyst_count ? ` (${quote.analyst_count} analysts)` : ''}
-          </span>
-          {quote?.analyst_target_low != null && quote?.analyst_target_high != null ? (
-            <RangeBar
-              low={quote.analyst_target_low}
-              high={quote.analyst_target_high}
-              value={quote.price}
-              secondaryValue={quote.analyst_target_price}
-              secondaryLabel={`Mean target $${quote.analyst_target_price?.toFixed(0)}`}
-            />
-          ) : (
-            <span className="ticker-detail__stat-value num">—</span>
-          )}
-        </div>
-      </div>
-
-      <div className={`card ticker-detail__summary ticker-detail__summary--${sentiment?.sentiment ?? 'pending'}`}>
-        <div className="ticker-detail__summary-head">
-          <span className="eyebrow">AI sentiment read</span>
-          <SentimentBadge sentiment={sentiment?.sentiment} />
-        </div>
-        {calls.length > 0 && (
-          <div className="ticker-detail__pills">
-            {calls.map((c, i) => (
-              <ToolCallPill key={i} toolName={c.toolName} done={c.done} />
-            ))}
+      <div className="ticker-detail__columns">
+        <div className="ticker-detail__main">
+          <div className="ticker-detail__stats">
+            <div className="card ticker-detail__stat">
+              <span className="ticker-detail__stat-label">Market cap</span>
+              <span className="ticker-detail__stat-value num">
+                {quote ? `$${formatCompact(quote.market_cap)}` : '—'}
+              </span>
+            </div>
+            <div className="card ticker-detail__stat">
+              <span className="ticker-detail__stat-label">P/E ratio</span>
+              <span className="ticker-detail__stat-value num">
+                {quote ? quote.pe_ratio.toFixed(1) : '—'}
+                {quote?.forward_pe && <span className="ticker-detail__stat-sub"> / fwd {quote.forward_pe.toFixed(1)}</span>}
+              </span>
+            </div>
+            <div className="card ticker-detail__stat">
+              <span className="ticker-detail__stat-label">Volume</span>
+              <span className="ticker-detail__stat-value num">
+                {quote ? formatCompact(quote.volume) : '—'}
+                {quote?.avg_volume_3m && (
+                  <span className="ticker-detail__stat-sub"> / avg {formatCompact(quote.avg_volume_3m)}</span>
+                )}
+              </span>
+            </div>
+            <div className="card ticker-detail__stat">
+              <span className="ticker-detail__stat-label">Dividend yield</span>
+              <span className="ticker-detail__stat-value num">
+                {quote?.dividend_yield ? `${quote.dividend_yield.toFixed(2)}%` : '—'}
+              </span>
+            </div>
+            <div className="card ticker-detail__stat ticker-detail__stat--wide">
+              <span className="ticker-detail__stat-label">52-week range</span>
+              {quote ? (
+                <RangeBar low={quote.fifty_two_week_low} high={quote.fifty_two_week_high} value={quote.price} />
+              ) : (
+                <span className="ticker-detail__stat-value num">—</span>
+              )}
+            </div>
+            <div className="card ticker-detail__stat">
+              <span className="ticker-detail__stat-label">52-week change</span>
+              <span
+                className={`ticker-detail__stat-value num ${
+                  quote?.fifty_two_week_change_percent != null
+                    ? quote.fifty_two_week_change_percent >= 0
+                      ? 'ticker-detail__stat-value--good'
+                      : 'ticker-detail__stat-value--bad'
+                    : ''
+                }`}
+              >
+                {quote?.fifty_two_week_change_percent != null
+                  ? `${quote.fifty_two_week_change_percent >= 0 ? '+' : ''}${quote.fifty_two_week_change_percent.toFixed(1)}%`
+                  : '—'}
+              </span>
+            </div>
+            <div className="card ticker-detail__stat">
+              <span className="ticker-detail__stat-label">Beta</span>
+              <span className="ticker-detail__stat-value num">{quote?.beta != null ? quote.beta.toFixed(2) : '—'}</span>
+            </div>
+            <div className="card ticker-detail__stat">
+              <span
+                className="ticker-detail__stat-label"
+                title="Average of analysts' 1 (Strong Buy) to 5 (Strong Sell) ratings"
+              >
+                Analyst rating
+              </span>
+              <span className="ticker-detail__stat-value">{quote?.analyst_rating ?? '—'}</span>
+              <span className="ticker-detail__stat-caption">1 = Strong Buy · 5 = Strong Sell</span>
+            </div>
+            <div className="card ticker-detail__stat ticker-detail__stat--wide">
+              <span className="ticker-detail__stat-label">
+                Analyst price target
+                {quote?.analyst_count ? ` (${quote.analyst_count} analysts)` : ''}
+              </span>
+              {quote?.analyst_target_low != null && quote?.analyst_target_high != null ? (
+                <RangeBar
+                  low={quote.analyst_target_low}
+                  high={quote.analyst_target_high}
+                  value={quote.price}
+                  secondaryValue={quote.analyst_target_price}
+                  secondaryLabel={`Mean target $${quote.analyst_target_price?.toFixed(0)}`}
+                />
+              ) : (
+                <span className="ticker-detail__stat-value num">—</span>
+              )}
+            </div>
           </div>
-        )}
-        <p>{sentiment?.summary ?? (summary || (quote ? 'Reading recent headlines…' : ''))}</p>
-      </div>
 
-      <div className="card">
-        <PriceChart
-          ticker={ticker}
-          prices={prices}
-          labels={labels}
-          volumes={volumes}
-          opens={opens}
-          highs={highs}
-          lows={lows}
-          period={period}
-          onPeriodChange={setPeriod}
-          positive={positive}
-          previousClose={previousClose}
-          loading={chartLoading}
-          isRegularHours={isRegularHours}
-          benchmarkPrices={benchmarkPrices}
-          benchmarkLabel="S&P 500"
-          compareEnabled={compareBenchmark}
-          onToggleCompare={() => setCompareBenchmark((v) => !v)}
-          chartType={chartType}
-          onChartTypeChange={setChartType}
-          extendedHours={extendedHours}
-          onToggleExtendedHours={() => setExtendedHours((v) => !v)}
-        />
-      </div>
+          <div className={`card ticker-detail__summary ticker-detail__summary--${sentiment?.sentiment ?? 'pending'}`}>
+            <div className="ticker-detail__summary-head">
+              <span className="eyebrow">AI sentiment read</span>
+              <SentimentBadge sentiment={sentiment?.sentiment} />
+            </div>
+            {calls.length > 0 && (
+              <div className="ticker-detail__pills">
+                {calls.map((c, i) => (
+                  <ToolCallPill key={i} toolName={c.toolName} done={c.done} />
+                ))}
+              </div>
+            )}
+            <p>{sentiment?.summary ?? (summary || (quote ? 'Reading recent headlines…' : ''))}</p>
+          </div>
 
-      {(quote === null || quote?.news_headlines) && (
-        <div className="ticker-detail__news">
-          <span className="eyebrow">Recent news</span>
-          <NewsFeed articles={quote?.news ?? null} showTicker={false} summarizable />
+          <div className="card">
+            <PriceChart
+              ticker={ticker}
+              prices={prices}
+              labels={labels}
+              volumes={volumes}
+              opens={opens}
+              highs={highs}
+              lows={lows}
+              period={period}
+              onPeriodChange={setPeriod}
+              positive={positive}
+              previousClose={previousClose}
+              loading={chartLoading}
+              isRegularHours={isRegularHours}
+              benchmarkPrices={benchmarkPrices}
+              benchmarkLabel="S&P 500"
+              compareEnabled={compareBenchmark}
+              onToggleCompare={() => setCompareBenchmark((v) => !v)}
+              chartType={chartType}
+              onChartTypeChange={setChartType}
+              extendedHours={extendedHours}
+              onToggleExtendedHours={() => setExtendedHours((v) => !v)}
+            />
+          </div>
+
+          {(quote === null || quote?.news_headlines) && (
+            <div className="ticker-detail__news">
+              <span className="eyebrow">Recent news</span>
+              <NewsFeed articles={quote?.news ?? null} showTicker={false} summarizable />
+            </div>
+          )}
         </div>
-      )}
+
+        <div className="ticker-detail__side">
+          <SimilarTickers tickers={quote?.similar_tickers ?? (quote === null ? null : [])} />
+        </div>
+      </div>
     </div>
   )
 }

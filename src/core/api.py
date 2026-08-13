@@ -51,6 +51,7 @@ from core.tools import (
     get_enterprise_value_history,
     get_market_cap_history,
     get_pe_ratio_history,
+    get_similar_tickers,
     get_stock_price,
     get_ticker_overview,
     get_ticker_stats,
@@ -321,6 +322,7 @@ async def get_ticker_snapshot(ticker: str) -> StreamingResponse:
                 "pe_ratio": get_pe_ratio(ticker),
                 "news_headlines": get_news_headlines(ticker),
                 "news": get_market_news([ticker], limit=8),
+                "similar_tickers": get_similar_tickers(ticker),
                 **get_day_change(ticker),
                 **get_ticker_stats(ticker),
             }
@@ -340,6 +342,7 @@ async def get_ticker_snapshot(ticker: str) -> StreamingResponse:
                     "day_change_abs": quote["absolute"],
                     "news_headlines": quote["news_headlines"],
                     "news": quote["news"],
+                    "similar_tickers": quote["similar_tickers"],
                     "fifty_two_week_low": quote["fifty_two_week_low"],
                     "fifty_two_week_high": quote["fifty_two_week_high"],
                     "fifty_two_week_change_percent": quote["fifty_two_week_change_percent"],

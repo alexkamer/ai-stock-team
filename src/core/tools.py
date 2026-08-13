@@ -889,6 +889,47 @@ def get_top_performing_tickers(limit: int = 6, offset: int = 0) -> tuple[list[di
     return _screen_quotes(query, limit, offset=offset, sortField="fiftytwowkpercentchange", sortAsc=False)
 
 
+def get_similar_tickers(ticker: str, limit: int = 8) -> list[dict]:
+    """Look up peer stocks in the same industry, for the ticker detail
+    page's "Similar tickers" sidebar. Restricted to major US exchanges and
+    a market-cap floor, same as get_top_performing_tickers, so thinly-traded
+    OTC peers don't crowd out real comparables.
+
+    Falls back to the broader sector if the industry alone doesn't have
+    enough peers above the market-cap floor (e.g. a niche industry with
+    only one or two other listed players). Returns an empty list rather
+    than raising for tickers with no industry/sector at all (ETFs, indices)
+    - unlike get_pe_ratio etc., this is a supplementary sidebar, not a value
+    the rest of the ticker detail page depends on.
+
+    Args:
+        ticker: Stock ticker symbol, e.g. 'NVDA'.
+        limit: Maximum number of peers to return.
+    """
+    info = _get_info(ticker)
+    industry = info.get("industry")
+    sector = info.get("sector")
+    if not industry and not sector:
+        return []
+
+    def _peers(field: str, value: str) -> list[dict]:
+        query = EquityQuery(
+            "and",
+            [
+                EquityQuery("eq", [field, value]),
+                EquityQuery("is-in", ["exchange", *_US_MAJOR_EXCHANGES]),
+                EquityQuery("gte", ["intradaymarketcap", 2_000_000_000]),
+            ],
+        )
+        items, _ = _screen_quotes(query, limit + 1, sortField="intradaymarketcap", sortAsc=False)
+        return [item for item in items if item["ticker"] != ticker][:limit]
+
+    peers = _peers("industry", industry) if industry else []
+    if len(peers) < limit and sector:
+        peers = _peers("sector", sector)
+    return peers
+
+
 def get_top_etfs(limit: int = 6, offset: int = 0) -> tuple[list[dict], int]:
     """Look up today's top-performing US ETFs, for a "top ETFs" feed.
 
