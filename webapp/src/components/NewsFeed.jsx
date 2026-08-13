@@ -64,6 +64,7 @@ function NewsRow({ article, showTicker, summarizable }) {
         )}
         <div className="news-row__body">
           <p className="news-row__title">{article.title}</p>
+          {article.summary && <p className="news-row__preview">{article.summary}</p>}
           <span className="news-row__meta">
             {showTicker && <TickerBadge ticker={article.ticker} percent={article.ticker_day_change_percent} />}
             {article.publisher}

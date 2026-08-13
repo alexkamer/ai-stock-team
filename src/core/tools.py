@@ -669,6 +669,7 @@ def get_market_news(tickers: list[str], limit: int = 8) -> list[dict]:
             articles.append(
                 {
                     "title": title,
+                    "summary": content.get("summary") or None,
                     "publisher": content.get("provider", {}).get("displayName", ""),
                     "url": url,
                     "published_at": content.get("pubDate", ""),
