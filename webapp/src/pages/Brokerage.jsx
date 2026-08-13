@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom'
 import { deleteJSON, getJSON, postJSON } from '../api/client'
 import AccountTabs from '../components/AccountTabs'
 import PortfolioOverview from '../components/PortfolioOverview'
+import Skeleton from '../components/Skeleton'
 import './Brokerage.css'
 
 export default function Brokerage() {
@@ -72,6 +73,15 @@ export default function Brokerage() {
         {isConnecting ? 'Redirecting…' : 'Connect brokerage'}
       </button>
       {error && <p className="brokerage-page__error">{error}</p>}
+
+      {connections === null && (
+        <div className="brokerage-connections">
+          <div className="brokerage-connections__row">
+            <Skeleton width="120px" height="0.9em" />
+            <Skeleton width="60px" height="1.2em" />
+          </div>
+        </div>
+      )}
 
       {hasConnections && <PortfolioOverview portfolio={portfolio} />}
 

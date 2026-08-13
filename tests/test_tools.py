@@ -648,3 +648,32 @@ def test_get_watchlist_prices_empty_watchlist_returns_empty_dict(mock_ticker_cls
 
     assert prices == {}
     mock_ticker_cls.assert_not_called()
+
+
+@patch("core.tools.yf.Ticker")
+@patch("core.tools.yf.screen")
+def test_get_similar_tickers_normalizes_dash_style_before_querying(mock_screen, mock_ticker_cls):
+    # Yahoo's quote info spells this "Software - Application" (hyphen with
+    # spaces); yfinance's screener EQ allow-list only accepts the em-dash,
+    # no-space form - get_similar_tickers must translate rather than pass
+    # the info-dict spelling straight through, or EquityQuery raises.
+    mock_ticker_cls.return_value = make_ticker(info={"industry": "Software - Application", "sector": "Technology"})
+    mock_screen.return_value = {
+        "quotes": [
+            make_quote("SAP", price=250.0),
+            make_quote("NVDA", price=219.78),
+        ]
+    }
+
+    peers = tools.get_similar_tickers("NVDA", limit=5)
+
+    assert [p["ticker"] for p in peers] == ["SAP"]
+    industry_query = mock_screen.call_args_list[0].args[0]
+    assert "Software—Application" in str(industry_query)
+
+
+@patch("core.tools.yf.Ticker")
+def test_get_similar_tickers_returns_empty_list_without_industry_or_sector(mock_ticker_cls):
+    mock_ticker_cls.return_value = make_ticker(info={})
+
+    assert tools.get_similar_tickers("SPY") == []

@@ -1,6 +1,10 @@
 import { useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { derivePositionRow, POSITION_COLUMNS } from './positionRow'
+import SkeletonRows from './SkeletonRows'
 import './PositionsTable.css'
+
+const SKELETON_WIDTHS = ['60px', '35px', '50px', '45px', '40px', '60px', '45px', '40px', '55px', '45px', '40px']
 
 function formatDollar(value) {
   if (value == null) return '—'
@@ -18,11 +22,13 @@ function signClass(value) {
 }
 
 /** Renders positions from either the per-account or combined-portfolio
- * endpoint with the same 11-column layout, sortable by any column. */
-export default function PositionsTable({ positions }) {
+ * endpoint with the same 11-column layout, sortable by any column.
+ * `isLoading` keeps the real headers on screen with skeleton rows
+ * underneath, instead of the whole table popping in once data arrives. */
+export default function PositionsTable({ positions, isLoading = false }) {
   const [sort, setSort] = useState({ key: 'symbol', dir: 1 })
 
-  const rows = useMemo(() => positions.map(derivePositionRow), [positions])
+  const rows = useMemo(() => (positions ?? []).map(derivePositionRow), [positions])
 
   const sortedRows = useMemo(() => {
     return [...rows].sort((a, b) => {
@@ -40,7 +46,7 @@ export default function PositionsTable({ positions }) {
     setSort((prev) => (prev.key === key ? { key, dir: -prev.dir } : { key, dir: 1 }))
   }
 
-  if (rows.length === 0) return <p className="positions-table__empty">No positions.</p>
+  if (!isLoading && rows.length === 0) return <p className="positions-table__empty">No positions.</p>
 
   return (
     <div className="positions-table__scroll">
@@ -58,24 +64,30 @@ export default function PositionsTable({ positions }) {
           </tr>
         </thead>
         <tbody>
-          {sortedRows.map((row) => (
-            <tr key={row.symbol}>
-              <td>
-                <span className="positions-table__symbol">{row.symbol}</span>
-                {row.description && <span className="positions-table__description">{row.description}</span>}
-              </td>
-              <td className="num">{row.units}</td>
-              <td className="num">{row.price == null ? '—' : row.price.toFixed(2)}</td>
-              <td className={`num ${signClass(row.priceChange)}`}>{formatDollar(row.priceChange)}</td>
-              <td className={`num ${signClass(row.priceChangePercent)}`}>{formatPercent(row.priceChangePercent)}</td>
-              <td className="num">{row.value == null ? '—' : row.value.toFixed(2)}</td>
-              <td className={`num ${signClass(row.dayChangeDollar)}`}>{formatDollar(row.dayChangeDollar)}</td>
-              <td className={`num ${signClass(row.dayChangePercent)}`}>{formatPercent(row.dayChangePercent)}</td>
-              <td className="num">{row.costBasisTotal == null ? '—' : row.costBasisTotal.toFixed(2)}</td>
-              <td className={`num ${signClass(row.gainDollar)}`}>{formatDollar(row.gainDollar)}</td>
-              <td className={`num ${signClass(row.gainPercent)}`}>{formatPercent(row.gainPercent)}</td>
-            </tr>
-          ))}
+          {isLoading ? (
+            <SkeletonRows columns={POSITION_COLUMNS.length} widths={SKELETON_WIDTHS} />
+          ) : (
+            sortedRows.map((row) => (
+              <tr key={row.symbol}>
+                <td>
+                  <Link to={`/tickers/${row.symbol}`} className="positions-table__symbol">
+                    {row.symbol}
+                  </Link>
+                  {row.description && <span className="positions-table__description">{row.description}</span>}
+                </td>
+                <td className="num">{row.units}</td>
+                <td className="num">{row.price == null ? '—' : row.price.toFixed(2)}</td>
+                <td className={`num ${signClass(row.priceChange)}`}>{formatDollar(row.priceChange)}</td>
+                <td className={`num ${signClass(row.priceChangePercent)}`}>{formatPercent(row.priceChangePercent)}</td>
+                <td className="num">{row.value == null ? '—' : row.value.toFixed(2)}</td>
+                <td className={`num ${signClass(row.dayChangeDollar)}`}>{formatDollar(row.dayChangeDollar)}</td>
+                <td className={`num ${signClass(row.dayChangePercent)}`}>{formatPercent(row.dayChangePercent)}</td>
+                <td className="num">{row.costBasisTotal == null ? '—' : row.costBasisTotal.toFixed(2)}</td>
+                <td className={`num ${signClass(row.gainDollar)}`}>{formatDollar(row.gainDollar)}</td>
+                <td className={`num ${signClass(row.gainPercent)}`}>{formatPercent(row.gainPercent)}</td>
+              </tr>
+            ))
+          )}
         </tbody>
       </table>
     </div>

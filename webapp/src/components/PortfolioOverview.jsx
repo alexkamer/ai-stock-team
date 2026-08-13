@@ -1,5 +1,6 @@
 import { derivePositionRow } from './positionRow'
 import PositionsTable from './PositionsTable'
+import Skeleton from './Skeleton'
 import './PortfolioOverview.css'
 
 function formatSigned(value, digits = 2) {
@@ -9,9 +10,23 @@ function formatSigned(value, digits = 2) {
 /** The page's hero: one composite total-value line (serif figure + an
  * inline day-change badge, the way a real brokerage statement reads it)
  * rather than a row of equal-weight stat tiles. `portfolio` is null while
- * loading - render nothing rather than a placeholder to avoid layout jump. */
+ * loading - the per-symbol day-change lookups behind it can take a while
+ * for a large portfolio, so this shows a skeleton hero + table rather
+ * than nothing until it resolves. */
 export default function PortfolioOverview({ portfolio }) {
-  if (!portfolio) return null
+  if (!portfolio) {
+    return (
+      <div className="portfolio-overview">
+        <div className="portfolio-overview__hero">
+          <Skeleton width="220px" height="3rem" />
+        </div>
+        <p className="portfolio-overview__cash">
+          <Skeleton width="140px" height="0.8em" />
+        </p>
+        <PositionsTable positions={null} isLoading />
+      </div>
+    )
+  }
 
   const rows = portfolio.positions.map(derivePositionRow)
   const knownDayChangeRows = rows.filter((row) => row.dayChangeDollar != null)

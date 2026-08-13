@@ -1,5 +1,6 @@
 """Plain functions the agent can call as tools. Registered onto an Agent in config.py."""
 
+import re
 from collections.abc import Callable, Iterable
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
@@ -921,6 +922,33 @@ def get_top_performing_tickers(limit: int = 6, offset: int = 0) -> tuple[list[di
     return _screen_quotes(query, limit, offset=offset, sortField="fiftytwowkpercentchange", sortAsc=False)
 
 
+def _canonical_screener_value(field: str, value: str) -> str | None:
+    """A quote's `info["industry"]`/`info["sector"]` (e.g. "Software -
+    Application") is spelled slightly differently than yfinance's screener
+    EQ allow-list for the same field (e.g. "Software—Application", an em
+    dash with no surrounding spaces) - normalize dashes on both sides to
+    find the exact string EquityQuery will accept. Returns None if there's
+    no match at all (field unrecognized, or a value the screener has no
+    equivalent for), so the caller can skip that field instead of
+    constructing a query that will raise.
+    """
+    from yfinance.const import EQUITY_SCREENER_EQ_MAP
+
+    allowed = EQUITY_SCREENER_EQ_MAP.get(field)
+    if allowed is None:
+        return None
+    candidates = allowed if isinstance(allowed, set) else {v for values in allowed.values() for v in values}
+
+    def _normalize_dashes(s: str) -> str:
+        return re.sub(r"\s*[-–—]\s*", "—", s).casefold()
+
+    normalized_value = _normalize_dashes(value)
+    for candidate in candidates:
+        if _normalize_dashes(candidate) == normalized_value:
+            return candidate
+    return None
+
+
 def get_similar_tickers(ticker: str, limit: int = 8) -> list[dict]:
     """Look up peer stocks in the same industry, for the ticker detail
     page's "Similar tickers" sidebar. Restricted to major US exchanges and
@@ -930,7 +958,8 @@ def get_similar_tickers(ticker: str, limit: int = 8) -> list[dict]:
     Falls back to the broader sector if the industry alone doesn't have
     enough peers above the market-cap floor (e.g. a niche industry with
     only one or two other listed players). Returns an empty list rather
-    than raising for tickers with no industry/sector at all (ETFs, indices)
+    than raising for tickers with no industry/sector at all (ETFs, indices),
+    or one whose industry/sector value the screener has no equivalent for
     - unlike get_pe_ratio etc., this is a supplementary sidebar, not a value
     the rest of the ticker detail page depends on.
 
@@ -945,10 +974,13 @@ def get_similar_tickers(ticker: str, limit: int = 8) -> list[dict]:
         return []
 
     def _peers(field: str, value: str) -> list[dict]:
+        canonical_value = _canonical_screener_value(field, value)
+        if canonical_value is None:
+            return []
         query = EquityQuery(
             "and",
             [
-                EquityQuery("eq", [field, value]),
+                EquityQuery("eq", [field, canonical_value]),
                 EquityQuery("is-in", ["exchange", *_US_MAJOR_EXCHANGES]),
                 EquityQuery("gte", ["intradaymarketcap", 2_000_000_000]),
             ],

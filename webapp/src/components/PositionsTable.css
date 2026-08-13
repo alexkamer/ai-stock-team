@@ -48,6 +48,13 @@
 .positions-table__symbol {
   font-weight: 600;
   margin-right: 0.5rem;
+  color: var(--text-primary);
+  text-decoration: none;
+}
+
+.positions-table__symbol:hover {
+  color: var(--signal);
+  text-decoration: underline;
 }
 
 .positions-table__description {
