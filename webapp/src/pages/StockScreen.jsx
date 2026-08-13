@@ -398,7 +398,7 @@ export default function StockScreen() {
                       <Sparkline values={t.day_prices} width={64} height={24} positive={changePositive} />
                     </span>
                     <span className="stock-screen__col-num stock-screen__col-price num">
-                      ${t.price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      {t.price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </span>
                     <span className={`stock-screen__col-num num ${changePositive ? 'text-good' : 'text-critical'}`}>
                       {t.day_change_abs != null

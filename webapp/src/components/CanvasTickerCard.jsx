@@ -72,7 +72,7 @@ export default function CanvasTickerCard({ data, selected, onToggleSelect }) {
 
       {price != null && (
         <div className="canvas-card__price-row">
-          <span className="canvas-card__price num">${price.toFixed(2)}</span>
+          <span className="canvas-card__price num">{price.toFixed(2)}</span>
           {dayChangePercent != null && dayChangeAbs != null && (
             <span className={`canvas-card__delta num${good ? ' canvas-card__delta--good' : ' canvas-card__delta--bad'}`}>
               {signedAbs(dayChangeAbs)} ({signedPct(dayChangePercent)})

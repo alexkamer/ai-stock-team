@@ -260,7 +260,7 @@ export default function PriceChart({
 
   function formatAxisValue(v) {
     if (compareMode) return `${v >= 0 ? '+' : ''}${v.toFixed(1)}%`
-    return `$${v.toFixed(v < 10 ? 2 : 0)}`
+    return v.toFixed(v < 10 ? 2 : 0)
   }
 
   const tooltipLeftPct = hoverIndex !== null ? Math.min(92, Math.max(8, (points[hoverIndex][0] / width) * 100)) : null
@@ -428,7 +428,7 @@ export default function PriceChart({
                   dy={prevCloseInRange ? -4 : prevCloseY === padTop ? 10 : -4}
                   className="price-chart__axis-label"
                 >
-                  Prev close ${previousClose.toFixed(2)}
+                  Prev close {previousClose.toFixed(2)}
                 </text>
               </g>
             )}
@@ -571,17 +571,17 @@ export default function PriceChart({
                 </>
               ) : (
                 <>
-                  <span className="num price-chart__tooltip-price">${prices[hoverIndex].toFixed(2)}</span>
+                  <span className="num price-chart__tooltip-price">{prices[hoverIndex].toFixed(2)}</span>
                   {hasOhl && (
                     <div className="price-chart__tooltip-ohlc">
                       <span>
-                        O <span className="num">${opens[hoverIndex].toFixed(2)}</span>
+                        O <span className="num">{opens[hoverIndex].toFixed(2)}</span>
                       </span>
                       <span>
-                        H <span className="num">${highs[hoverIndex].toFixed(2)}</span>
+                        H <span className="num">{highs[hoverIndex].toFixed(2)}</span>
                       </span>
                       <span>
-                        L <span className="num">${lows[hoverIndex].toFixed(2)}</span>
+                        L <span className="num">{lows[hoverIndex].toFixed(2)}</span>
                       </span>
                     </div>
                   )}

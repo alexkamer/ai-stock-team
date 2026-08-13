@@ -14,7 +14,7 @@ function signedPct(n) {
 }
 
 const ROWS = [
-  { key: 'price', label: 'Price', get: (t) => (t.price != null ? `$${t.price.toFixed(2)}` : null) },
+  { key: 'price', label: 'Price', get: (t) => (t.price != null ? t.price.toFixed(2) : null) },
   {
     key: 'dayChange',
     label: 'Day change',

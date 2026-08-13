@@ -89,11 +89,11 @@ export default function OptionsScreen() {
               >
                 <span className="stock-screen__name">
                   <span className="watchlist-row__ticker">{c.company_name}</span>
-                  <span className="watchlist-row__company">Strike ${c.strike}</span>
+                  <span className="watchlist-row__company">Strike {c.strike}</span>
                 </span>
                 <span className="watchlist-row__ticker">{c.underlying_symbol}</span>
                 <span className="stock-screen__col-price">
-                  <span className="watchlist-row__price num">${c.price.toFixed(2)}</span>
+                  <span className="watchlist-row__price num">{c.price.toFixed(2)}</span>
                   <ChangeBadge percent={c.day_change_percent} />
                 </span>
                 <span className="stock-screen__col-volume num">{c.volume ? c.volume.toLocaleString() : '—'}</span>

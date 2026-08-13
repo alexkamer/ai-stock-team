@@ -48,7 +48,7 @@ function SimilarTickers({ tickers }) {
                 </span>
                 <Sparkline values={t.day_prices} width={56} height={24} positive={positive} />
                 <span className="similar-row__price-block">
-                  <span className="similar-row__price num">${t.price.toFixed(2)}</span>
+                  <span className="similar-row__price num">{t.price.toFixed(2)}</span>
                   <span className={`change-badge ${positive ? 'change-badge--good' : 'change-badge--bad'}`}>
                     {positive ? '+' : ''}{t.day_change_percent.toFixed(2)}%
                   </span>
@@ -119,8 +119,8 @@ function RangeBar({ low, high, value, valueLabel = 'Current price', secondaryVal
         </div>
       )}
       <div className="range-bar__labels">
-        <span className="num">${low.toFixed(2)}</span>
-        <span className="num">${high.toFixed(2)}</span>
+        <span className="num">{low.toFixed(2)}</span>
+        <span className="num">{high.toFixed(2)}</span>
       </div>
     </div>
   )
@@ -246,23 +246,23 @@ export default function TickerDetail() {
         <div className="ticker-detail__hero-side">
           {quote ? (
             <div className="ticker-detail__price-block">
-              <span className="ticker-detail__price num">${quote.price.toFixed(2)}</span>
+              <span className="ticker-detail__price num">{quote.price.toFixed(2)}</span>
               <span className={`change-badge ${positive ? 'change-badge--good' : 'change-badge--bad'}`}>
-                {positive ? '↑' : '↓'} {Math.abs(quote.day_change_percent).toFixed(2)}% (${Math.abs(quote.day_change_abs).toFixed(2)})
+                {positive ? '↑' : '↓'} {Math.abs(quote.day_change_abs).toFixed(2)} ({Math.abs(quote.day_change_percent).toFixed(2)}%)
               </span>
               {quote.extended_hours && (
                 <div className="ticker-detail__extended-price">
                   <span className="ticker-detail__extended-label">
                     {quote.extended_hours.session === 'pre' ? 'Pre-market' : 'After hours'}
                   </span>
-                  <span className="ticker-detail__extended-value num">${quote.extended_hours.price.toFixed(2)}</span>
+                  <span className="ticker-detail__extended-value num">{quote.extended_hours.price.toFixed(2)}</span>
                   <span
                     className={`change-badge change-badge--small ${
                       quote.extended_hours.percent >= 0 ? 'change-badge--good' : 'change-badge--bad'
                     }`}
                   >
-                    {quote.extended_hours.percent >= 0 ? '↑' : '↓'} {Math.abs(quote.extended_hours.percent).toFixed(2)}%
-                    (${Math.abs(quote.extended_hours.absolute).toFixed(2)})
+                    {quote.extended_hours.percent >= 0 ? '↑' : '↓'} {Math.abs(quote.extended_hours.absolute).toFixed(2)}{' '}
+                    ({Math.abs(quote.extended_hours.percent).toFixed(2)}%)
                   </span>
                 </div>
               )}
@@ -353,7 +353,7 @@ export default function TickerDetail() {
                   high={quote.analyst_target_high}
                   value={quote.price}
                   secondaryValue={quote.analyst_target_price}
-                  secondaryLabel={`Mean target $${quote.analyst_target_price?.toFixed(0)}`}
+                  secondaryLabel={`Mean target ${quote.analyst_target_price?.toFixed(0)}`}
                 />
               ) : (
                 <span className="ticker-detail__stat-value num">—</span>

@@ -15,8 +15,8 @@ describe('ComparisonTable', () => {
     )
     expect(screen.getByText('AAPL')).toBeInTheDocument()
     expect(screen.getByText('NVDA')).toBeInTheDocument()
-    expect(screen.getByText('$301.58')).toBeInTheDocument()
-    expect(screen.getByText('$223.93')).toBeInTheDocument()
+    expect(screen.getByText('301.58')).toBeInTheDocument()
+    expect(screen.getByText('223.93')).toBeInTheDocument()
   })
 
   it('omits a stat row entirely when neither ticker has it', () => {

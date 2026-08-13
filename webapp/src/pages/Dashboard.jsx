@@ -65,7 +65,7 @@ function TickerGroup({ label, to, tickers, emptyMessage, onRemove, children }) {
                     <Sparkline values={t.day_prices} width={64} height={28} positive={positive} />
                   </span>
                   <span className="watchlist-table__col-price">
-                    <span className="watchlist-row__price num">${t.price.toFixed(2)}</span>
+                    <span className="watchlist-row__price num">{t.price.toFixed(2)}</span>
                     <ChangeBadge percent={t.day_change_percent} />
                   </span>
                 </Link>
