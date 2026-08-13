@@ -34,3 +34,40 @@
   font-size: 0.8rem;
   color: var(--text-muted);
 }
+
+.portfolio-overview__view-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.6rem;
+}
+
+.portfolio-overview__view-header .eyebrow {
+  margin-bottom: 0;
+}
+
+.portfolio-overview__view-toggle {
+  display: flex;
+  gap: 2px;
+  background: var(--surface-2);
+  border-radius: 4px;
+  padding: 2px;
+}
+
+.portfolio-overview__view-btn {
+  padding: 3px 10px;
+  border: none;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-family: var(--mono);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.portfolio-overview__view-btn--active {
+  background: var(--signal-bg);
+  color: var(--signal);
+  font-weight: 600;
+}

@@ -1,4 +1,6 @@
+import { useState } from 'react'
 import { derivePositionRow } from './positionRow'
+import PortfolioTreemap from './PortfolioTreemap'
 import PositionsTable from './PositionsTable'
 import Skeleton from './Skeleton'
 import './PortfolioOverview.css'
@@ -14,6 +16,8 @@ function formatSigned(value, digits = 2) {
  * for a large portfolio, so this shows a skeleton hero + table rather
  * than nothing until it resolves. */
 export default function PortfolioOverview({ portfolio }) {
+  const [view, setView] = useState('table')
+
   if (!portfolio) {
     return (
       <div className="portfolio-overview">
@@ -51,7 +55,31 @@ export default function PortfolioOverview({ portfolio }) {
       </div>
       {totalCash > 0 && <p className="portfolio-overview__cash">{totalCash.toFixed(2)} cash uninvested</p>}
 
-      <PositionsTable positions={portfolio.positions} />
+      <div className="portfolio-overview__view-header">
+        <span className="eyebrow">
+          {view === 'table' ? 'Holdings' : "Holdings by size, colored by today's change"}
+        </span>
+        <div className="portfolio-overview__view-toggle" role="group" aria-label="Holdings view">
+          <button
+            className={`portfolio-overview__view-btn${view === 'table' ? ' portfolio-overview__view-btn--active' : ''}`}
+            onClick={() => setView('table')}
+          >
+            Table
+          </button>
+          <button
+            className={`portfolio-overview__view-btn${view === 'heatmap' ? ' portfolio-overview__view-btn--active' : ''}`}
+            onClick={() => setView('heatmap')}
+          >
+            Heatmap
+          </button>
+        </div>
+      </div>
+
+      {view === 'heatmap' ? (
+        <PortfolioTreemap positions={portfolio.positions} />
+      ) : (
+        <PositionsTable positions={portfolio.positions} />
+      )}
     </div>
   )
 }

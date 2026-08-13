@@ -1,0 +1,74 @@
+.portfolio-treemap {
+  margin-bottom: 1.5rem;
+}
+
+.portfolio-treemap__svg {
+  display: block;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.portfolio-treemap__tile-rect,
+.portfolio-treemap__tile rect {
+  stroke: var(--paper);
+  stroke-width: 2;
+  cursor: pointer;
+}
+
+.portfolio-treemap__tile-rect:hover,
+.portfolio-treemap__tile:hover rect {
+  stroke: var(--text-primary);
+}
+
+.portfolio-treemap__symbol {
+  font-family: var(--sans);
+  font-weight: 700;
+  fill: #fff;
+  paint-order: stroke;
+  stroke: rgba(0, 0, 0, 0.6);
+  stroke-width: 3px;
+  stroke-linejoin: round;
+  pointer-events: none;
+}
+
+.portfolio-treemap__change {
+  font-family: var(--mono);
+  font-weight: 600;
+  fill: #fff;
+  paint-order: stroke;
+  stroke: rgba(0, 0, 0, 0.6);
+  stroke-width: 3px;
+  stroke-linejoin: round;
+  pointer-events: none;
+}
+
+.portfolio-treemap__tooltip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  align-items: baseline;
+  margin-top: 0.6rem;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-1);
+  font-size: 0.85rem;
+  min-height: 1.5rem;
+}
+
+.portfolio-treemap__tooltip-symbol {
+  font-weight: 700;
+}
+
+.portfolio-treemap__tooltip-description {
+  color: var(--text-muted);
+  font-size: 0.8rem;
+}
+
+.portfolio-treemap__tooltip .text-good {
+  color: var(--good);
+}
+
+.portfolio-treemap__tooltip .text-critical {
+  color: var(--critical);
+}
