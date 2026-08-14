@@ -1,10 +1,18 @@
 import { useEffect, useRef, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { useWatchlist } from '../context/WatchlistContext'
 import './AdvancedCharts.css'
 
 const TV_SCRIPT_SRC = 'https://s3.tradingview.com/tv.js'
 const CONTAINER_ID = 'advanced-charts-tv-container'
 const DEFAULT_SYMBOL = 'NASDAQ:AAPL'
+const STORAGE_KEY = 'advanced-charts-symbol'
+
+function normalizeSymbol(value) {
+  const trimmed = value.trim().toUpperCase()
+  if (!trimmed) return null
+  return trimmed.includes(':') ? trimmed : `NASDAQ:${trimmed}`
+}
 
 function loadTradingViewScript() {
   if (window.TradingView) return Promise.resolve()
@@ -21,11 +29,42 @@ function loadTradingViewScript() {
   return window.__tvScriptPromise
 }
 
+function loadPersistedSymbol() {
+  try {
+    return localStorage.getItem(STORAGE_KEY)
+  } catch {
+    return null
+  }
+}
+
 export default function AdvancedCharts() {
   const { tickers } = useWatchlist()
-  const [symbol, setSymbol] = useState(tickers[0] ? `NASDAQ:${tickers[0]}` : DEFAULT_SYMBOL)
+  const [searchParams, setSearchParams] = useSearchParams()
+  const [symbol, setSymbolState] = useState(
+    () =>
+      normalizeSymbol(searchParams.get('symbol') ?? '') ??
+      loadPersistedSymbol() ??
+      (tickers[0] ? `NASDAQ:${tickers[0]}` : DEFAULT_SYMBOL),
+  )
   const [searchInput, setSearchInput] = useState('')
   const containerRef = useRef(null)
+
+  function setSymbol(next) {
+    setSymbolState(next)
+    setSearchParams({ symbol: next }, { replace: true })
+    try {
+      localStorage.setItem(STORAGE_KEY, next)
+    } catch {
+      // localStorage unavailable (private browsing, quota) - just won't persist
+    }
+  }
+
+  useEffect(() => {
+    if (searchParams.get('symbol') !== symbol) {
+      setSearchParams({ symbol }, { replace: true })
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   useEffect(() => {
     let cancelled = false
@@ -54,9 +93,9 @@ export default function AdvancedCharts() {
 
   function handleSearchSubmit(e) {
     e.preventDefault()
-    const value = searchInput.trim().toUpperCase()
+    const value = normalizeSymbol(searchInput)
     if (!value) return
-    setSymbol(value.includes(':') ? value : `NASDAQ:${value}`)
+    setSymbol(value)
     setSearchInput('')
   }
 
