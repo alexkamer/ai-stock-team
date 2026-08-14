@@ -29,6 +29,13 @@
   color: var(--critical);
 }
 
+.portfolio-overview__updated-at {
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  margin-left: auto;
+}
+
 .portfolio-overview__cash {
   margin: 0.4rem 0 1.75rem;
   font-size: 0.8rem;

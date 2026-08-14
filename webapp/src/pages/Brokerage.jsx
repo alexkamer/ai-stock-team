@@ -5,6 +5,11 @@ import PortfolioOverview from '../components/PortfolioOverview'
 import Skeleton from '../components/Skeleton'
 import './Brokerage.css'
 
+// Keeps holdings roughly in step with the market without hammering yfinance
+// - the backend's own quote cache (core/tools._get_info) has a matching TTL,
+// so a shorter interval here wouldn't actually return fresher prices anyway.
+const PRICE_REFRESH_INTERVAL_MS = 30_000
+
 /** Same trick as TickerDetail's CompanyLogo: SnapTrade's own logo URLs are
  * hotlink-protected and fail when loaded directly from the browser, so this
  * resolves a favicon through Google's service off the brokerage's domain
@@ -23,12 +28,16 @@ export default function Brokerage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const [connections, setConnections] = useState(null)
   const [portfolio, setPortfolio] = useState(null)
+  const [updatedAt, setUpdatedAt] = useState(null)
   const [error, setError] = useState(null)
   const [isConnecting, setIsConnecting] = useState(false)
 
   const loadPortfolio = useCallback(() => {
     getJSON('/brokerage/portfolio')
-      .then(setPortfolio)
+      .then((data) => {
+        setPortfolio(data)
+        setUpdatedAt(new Date())
+      })
       .catch((err) => setError(err.message))
   }, [])
 
@@ -53,6 +62,13 @@ export default function Brokerage() {
       loadPortfolio()
     }
   }, [searchParams, setSearchParams, loadConnections, loadPortfolio])
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (!document.hidden) loadPortfolio()
+    }, PRICE_REFRESH_INTERVAL_MS)
+    return () => clearInterval(interval)
+  }, [loadPortfolio])
 
   async function handleConnect() {
     setError(null)
@@ -131,7 +147,7 @@ export default function Brokerage() {
 
       {connections?.length === 0 && <p className="brokerage-page__empty">No brokerages connected yet.</p>}
 
-      {hasConnections && <PortfolioOverview portfolio={portfolio} connections={connections} />}
+      {hasConnections && <PortfolioOverview portfolio={portfolio} connections={connections} updatedAt={updatedAt} />}
     </div>
   )
 }

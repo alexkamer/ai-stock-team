@@ -9,8 +9,17 @@ import './PortfolioOverview.css'
 
 const ORDER_SKELETON_WIDTHS = ['70px', '50px', '80%', '55px']
 
+// Matches Brokerage.jsx's own portfolio refresh cadence, which covers "All
+// accounts" - this just keeps a single selected account's positions from
+// going stale too, since those come from a separate, cached-until-now fetch.
+const PRICE_REFRESH_INTERVAL_MS = 30_000
+
 function formatSigned(value, digits = 2) {
   return `${value >= 0 ? '+' : ''}${value.toFixed(digits)}`
+}
+
+function formatUpdatedAt(date) {
+  return date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', second: '2-digit' })
 }
 
 /** The page's hero: one composite total-value line (serif figure + an
@@ -27,7 +36,7 @@ function formatSigned(value, digits = 2) {
  * every account's positions/orders) is prefetched in the background as
  * soon as the account list is known, so switching tabs/accounts reads
  * from cache instead of round-tripping. */
-export default function PortfolioOverview({ portfolio, connections }) {
+export default function PortfolioOverview({ portfolio, connections, updatedAt }) {
   const accounts = useMemo(
     () =>
       (connections ?? []).flatMap((connection) =>
@@ -68,6 +77,17 @@ export default function PortfolioOverview({ portfolio, connections }) {
     })
     return () => cancelIdle(handle)
   }, [accounts])
+
+  useEffect(() => {
+    if (accountId === 'all') return
+    const interval = setInterval(() => {
+      if (document.hidden) return
+      getJSON(`/brokerage/accounts/${accountId}/positions`).then((positions) =>
+        setPositionsByAccount((prev) => ({ ...prev, [accountId]: positions }))
+      )
+    }, PRICE_REFRESH_INTERVAL_MS)
+    return () => clearInterval(interval)
+  }, [accountId])
 
   if (!portfolio) {
     return (
@@ -120,6 +140,7 @@ export default function PortfolioOverview({ portfolio, connections }) {
             {formatSigned(dayChangeDollar)} ({formatSigned(dayChangePercent)}%) today
           </span>
         )}
+        {updatedAt && <span className="portfolio-overview__updated-at">Updated {formatUpdatedAt(updatedAt)}</span>}
       </div>
       {afterHours && extendedHoursTotalValue != null && (
         <div className="portfolio-overview__extended">

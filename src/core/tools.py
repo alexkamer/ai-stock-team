@@ -5,6 +5,7 @@ from collections.abc import Callable, Iterable
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import time
+from time import monotonic
 from typing import TypeVar
 
 import requests
@@ -51,19 +52,24 @@ def parallel_map(fn: Callable[[_T], _R], items: Iterable[_T]) -> list[_R]:
         return list(executor.map(fn, items))
 
 
-# get_stock_price, get_market_cap, and get_pe_ratio all read from the same
-# yf.Ticker(...).info payload. Without this cache, a single query that asks
-# for all three (e.g. "price, market cap, and P/E of Nvidia") would trigger
-# three separate network fetches of identical data. Keyed by ticker, kept
-# for the life of the process - fine for one-shot scripts; a long-running
-# service would want a TTL instead.
-_info_cache: dict[str, dict] = {}
+# get_stock_price, get_market_cap, get_day_change, and get_pe_ratio all read
+# from the same yf.Ticker(...).info payload. Without this cache, a single
+# query that asks for all three (e.g. "price, market cap, and P/E of
+# Nvidia") would trigger three separate network fetches of identical data.
+# Keyed by ticker, with a short TTL rather than the process lifetime - the
+# brokerage page polls this repeatedly to auto-refresh prices, and a
+# lifetime cache would just keep serving the first-ever quote forever.
+_INFO_CACHE_TTL_SECONDS = 20
+_info_cache: dict[str, tuple[float, dict]] = {}
 
 
 def _get_info(ticker: str) -> dict:
-    if ticker not in _info_cache:
-        _info_cache[ticker] = yf.Ticker(ticker).info
-    return _info_cache[ticker]
+    cached = _info_cache.get(ticker)
+    if cached is not None and monotonic() - cached[0] < _INFO_CACHE_TTL_SECONDS:
+        return cached[1]
+    info = yf.Ticker(ticker).info
+    _info_cache[ticker] = (monotonic(), info)
+    return info
 
 
 def get_stock_price(ticker: str) -> float:

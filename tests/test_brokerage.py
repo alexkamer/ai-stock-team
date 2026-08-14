@@ -255,7 +255,8 @@ def test_portfolio_combines_positions_across_accounts_by_symbol(
     assert body["positions"] == [
         {
             "symbol": "NVDA", "description": "NVIDIA Corp", "units": 3.0, "value": 300.0,
-            "price_change": 2.0, "price_change_percent": 1.5, "total_cost_basis": 380.0, "currency": "USD",
+            "price_change": 2.0, "price_change_percent": 1.5, "extended_hours": None,
+            "total_cost_basis": 380.0, "currency": "USD",
         }
     ]
     assert body["total_value"] == 315.0
