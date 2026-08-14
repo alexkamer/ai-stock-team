@@ -5,13 +5,16 @@ import './AdvancedCharts.css'
 
 const TV_SCRIPT_SRC = 'https://s3.tradingview.com/tv.js'
 const CONTAINER_ID = 'advanced-charts-tv-container'
-const DEFAULT_SYMBOL = 'NASDAQ:AAPL'
+const DEFAULT_SYMBOL = 'AAPL'
 const STORAGE_KEY = 'advanced-charts-symbol'
 
+// No exchange info is available anywhere in this app's API, so we pass
+// bare tickers straight through - TradingView resolves the right listing
+// (e.g. "JPM" -> NYSE:JPM) on its own. An explicit "EXCHANGE:TICKER" input
+// is passed through unchanged.
 function normalizeSymbol(value) {
   const trimmed = value.trim().toUpperCase()
-  if (!trimmed) return null
-  return trimmed.includes(':') ? trimmed : `NASDAQ:${trimmed}`
+  return trimmed || null
 }
 
 function loadTradingViewScript() {
@@ -44,7 +47,8 @@ export default function AdvancedCharts() {
     () =>
       normalizeSymbol(searchParams.get('symbol') ?? '') ??
       loadPersistedSymbol() ??
-      (tickers[0] ? `NASDAQ:${tickers[0]}` : DEFAULT_SYMBOL),
+      tickers[0] ??
+      DEFAULT_SYMBOL,
   )
   const [searchInput, setSearchInput] = useState('')
   const containerRef = useRef(null)
@@ -77,6 +81,7 @@ export default function AdvancedCharts() {
         autosize: true,
         symbol,
         interval: 'D',
+        range: '12M',
         timezone: 'Etc/UTC',
         theme: isDark ? 'dark' : 'light',
         style: '1',
@@ -114,7 +119,7 @@ export default function AdvancedCharts() {
                 <button
                   type="button"
                   className={`advanced-charts__watchlist-item${t === activeTicker ? ' advanced-charts__watchlist-item--active' : ''}`}
-                  onClick={() => setSymbol(`NASDAQ:${t}`)}
+                  onClick={() => setSymbol(t)}
                 >
                   {t}
                 </button>
