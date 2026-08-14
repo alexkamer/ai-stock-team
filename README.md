@@ -29,10 +29,39 @@ This project calls Claude through AWS Bedrock, so you'll need AWS credentials wi
 uv sync --group main --group dev
 ```
 
+(Or `make install`, which also runs `npm install` in `webapp/` for you.)
+
 Copy `.env.example` to `.env` and fill in whichever sections you need. The
 brokerage page needs a `SNAPTRADE_CLIENT_ID`/`SNAPTRADE_CONSUMER_KEY` pair
 from your [SnapTrade dashboard](https://snaptrade.com/) — everything else in
 the app works without it.
+
+### Connecting SnapTrade
+
+1. Sign up for a [SnapTrade](https://snaptrade.com/) developer account and
+   create an app. On its API keys page, grab the **Client ID** and generate
+   a **Personal API key** (its secret is the consumer key) — this app uses
+   that single-identity Personal API key model, not SnapTrade's
+   multi-tenant `registerUser`/`userId`/`userSecret` flow, so there's no
+   per-app-user provisioning step.
+2. Put those two values in `.env`:
+   ```
+   SNAPTRADE_CLIENT_ID=
+   SNAPTRADE_CONSUMER_KEY=
+   ```
+3. Restart the backend, then open `/brokerage` in the web app and click
+   **Connect a brokerage**. That opens SnapTrade's hosted Connection
+   Portal — an OAuth-style flow where you pick your brokerage and log in
+   directly with them; credentials never pass through this app.
+4. Once you complete the flow you're redirected back and the connection
+   shows up as a card with live positions, orders, and news.
+
+The connection is deliberately read-only end-to-end: the portal is always
+requested with `connection_type="read"` (see
+`src/core/snaptrade_client.py`), and no trade-execution SDK calls are wired
+up anywhere in the app, so there's no code path that could place a trade.
+Positions/balances are fetched live on every page load and never persisted
+— only which brokerage/account you've connected is stored.
 
 The app has user accounts backed by a local SQLite DB. Set up the schema and
 seed a standard admin account for local testing:
@@ -56,18 +85,18 @@ uv run ai-stock-team NVDA
 **Backend API** (serves the web app at `http://localhost:8000`):
 
 ```bash
-uv run uvicorn core.api:app --app-dir src --reload
+make backend
 ```
 
 **Frontend** (in a separate terminal):
 
 ```bash
-cd webapp
-npm install
-npm run dev
+make frontend
 ```
 
-The Vite dev server proxies `/api` to the backend, so run both together while developing. Once both are up, open `http://localhost:5173`.
+Or run both at once with `make dev` (Ctrl-C stops both). The Vite dev
+server proxies `/api` to the backend, so run both together while
+developing. Once both are up, open `http://localhost:5173`.
 
 ## Tour of the web app
 
@@ -160,7 +189,8 @@ bar.
 ## Tests
 
 ```bash
-uv run pytest        # backend
+make test            # both, or run individually:
+uv run pytest         # backend
 cd webapp && npm test # frontend (Vitest)
 ```
 
