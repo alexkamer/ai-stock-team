@@ -13,6 +13,7 @@ genuinely absent, so there's no code path that could place a trade.
 
 import os
 import re
+from urllib.parse import urlparse
 
 from snaptrade_client import SnapTrade
 from snaptrade_client.auth import SnapTradeAuth
@@ -20,6 +21,17 @@ from snaptrade_client.auth import SnapTradeAuth
 import core.env  # noqa: F401 - loads .env before the os.environ.get() calls below
 
 _client: SnapTrade | None = None
+
+
+def _domain_from_url(url: str | None) -> str | None:
+    """SnapTrade's own S3 logo URLs are hotlink-protected and fail when
+    loaded directly from the browser - same fix as TickerDetail's company
+    logos, which resolve a domain through Google's favicon service instead
+    of hosting/proxying logo images ourselves."""
+    if not url:
+        return None
+    host = urlparse(url).netloc or urlparse(url).path
+    return host.removeprefix("www.") or None
 
 
 def _get_client() -> SnapTrade:
@@ -51,6 +63,7 @@ def list_connections() -> list[dict]:
         {
             "id": item["id"],
             "brokerage_name": item["brokerage"].get("display_name") or item["brokerage"].get("name"),
+            "brokerage_domain": _domain_from_url(item["brokerage"].get("url")),
             "type": item["type"],
             "disabled": item["disabled"],
         }

@@ -66,6 +66,7 @@ class BrokerageConnection(Base):
     snaptrade_connection_id: Mapped[str | None] = mapped_column(String(64), unique=True, nullable=True)
     portal_session_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     brokerage_name: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    brokerage_domain: Mapped[str | None] = mapped_column(String(255), nullable=True)
     status: Mapped[str] = mapped_column(String(16), default="pending")
     created_at: Mapped[datetime] = mapped_column(DateTime(), default=_now)
 

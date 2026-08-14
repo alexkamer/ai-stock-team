@@ -35,6 +35,35 @@
   color: var(--text-muted);
 }
 
+.portfolio-overview__tabs {
+  display: flex;
+  gap: 1.25rem;
+  margin: 0 0 0.9rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.portfolio-overview__tab {
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  padding: 0 0 0.5rem;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.portfolio-overview__tab:hover {
+  color: var(--text-secondary);
+}
+
+.portfolio-overview__tab--active {
+  color: var(--text-primary);
+  font-weight: 600;
+  border-bottom-color: var(--signal);
+}
+
 .portfolio-overview__view-header {
   display: flex;
   align-items: baseline;
@@ -45,6 +74,23 @@
 
 .portfolio-overview__view-header .eyebrow {
   margin-bottom: 0;
+}
+
+.portfolio-overview__controls {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.portfolio-overview__account-select {
+  background: var(--surface-2);
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 3px 8px;
+  font-family: var(--sans);
+  font-size: 12px;
+  cursor: pointer;
 }
 
 .portfolio-overview__view-toggle {
@@ -70,4 +116,65 @@
   background: var(--signal-bg);
   color: var(--signal);
   font-weight: 600;
+}
+
+.portfolio-overview__empty {
+  color: var(--text-muted);
+  font-size: 0.875rem;
+  margin: 0;
+}
+
+.portfolio-overview__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+}
+
+.portfolio-overview__table th {
+  text-align: left;
+  padding: 0.3rem 0.5rem;
+  border-bottom: 1px solid var(--border);
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.portfolio-overview__table td {
+  padding: 0.35rem 0.5rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.portfolio-overview__table tr:last-child td {
+  border-bottom: none;
+}
+
+.portfolio-overview__table .text-good {
+  color: var(--good);
+}
+
+.portfolio-overview__table .text-critical {
+  color: var(--critical);
+}
+
+.portfolio-overview__order-account {
+  color: var(--text-muted);
+}
+
+.portfolio-overview__order-type {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  padding: 0.1rem 0.4rem;
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--text-secondary);
+}
+
+.portfolio-overview__order-type--buy {
+  background: var(--good-bg);
+  color: var(--good);
+}
+
+.portfolio-overview__order-type--sell {
+  background: var(--critical-bg);
+  color: var(--critical);
 }

@@ -39,6 +39,7 @@ class AccountResponse(BaseModel):
 class ConnectionResponse(BaseModel):
     id: int
     brokerage_name: str | None
+    brokerage_domain: str | None
     status: str
     accounts: list[AccountResponse]
 
@@ -70,6 +71,7 @@ class ActivityResponse(BaseModel):
     price: float | None
     currency: str | None
     trade_date: str | None
+    account_name: str | None = None
 
 
 class PortfolioBalance(BaseModel):
@@ -145,6 +147,7 @@ def sync_connections(user: User = Depends(get_current_user), db: DbSession = Dep
             connection = BrokerageConnection(user_id=user.id, snaptrade_connection_id=remote_id)
             db.add(connection)
         connection.brokerage_name = remote["brokerage_name"]
+        connection.brokerage_domain = remote.get("brokerage_domain")
         connection.status = "revoked" if remote["disabled"] else "active"
 
         remote_accounts = snaptrade.list_connection_accounts(remote_id)
@@ -220,6 +223,30 @@ def get_portfolio(user: User = Depends(get_current_user), db: DbSession = Depend
         balances=[PortfolioBalance(currency=currency, **agg) for currency, agg in balances_by_currency.items()],
         positions=[PortfolioPosition(**position) for position in combined_positions],
     )
+
+
+@router.get("/orders", response_model=list[ActivityResponse])
+def get_orders(user: User = Depends(get_current_user), db: DbSession = Depends(get_db)):
+    """Combines recent activity across every active account, newest first,
+    each tagged with the account it came from since this spans accounts."""
+    accounts = (
+        db.query(BrokerageAccount)
+        .join(BrokerageConnection)
+        .filter(BrokerageConnection.user_id == user.id, BrokerageConnection.status == "active")
+        .all()
+    )
+
+    def _activities_for(account: BrokerageAccount) -> list[dict]:
+        return [
+            {**activity, "account_name": account.name}
+            for activity in snaptrade.get_account_activities(account.snaptrade_account_id)
+        ]
+
+    activities = [activity for group in parallel_map(_activities_for, accounts) for activity in group]
+    activities.sort(key=lambda activity: activity["trade_date"] or "", reverse=True)
+
+    log_event(db, user.id, "orders_viewed")
+    return [ActivityResponse(**activity) for activity in activities]
 
 
 @router.delete("/connections/{connection_id}")
@@ -301,6 +328,7 @@ def _serialize_connections(connections: list[BrokerageConnection]) -> list[Conne
         ConnectionResponse(
             id=c.id,
             brokerage_name=c.brokerage_name,
+            brokerage_domain=c.brokerage_domain,
             status=c.status,
             accounts=[
                 AccountResponse(

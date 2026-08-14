@@ -1,10 +1,23 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { deleteJSON, getJSON, postJSON } from '../api/client'
-import AccountTabs from '../components/AccountTabs'
 import PortfolioOverview from '../components/PortfolioOverview'
 import Skeleton from '../components/Skeleton'
 import './Brokerage.css'
+
+/** Same trick as TickerDetail's CompanyLogo: SnapTrade's own logo URLs are
+ * hotlink-protected and fail when loaded directly from the browser, so this
+ * resolves a favicon through Google's service off the brokerage's domain
+ * instead. */
+function BrokerageLogo({ domain, name }) {
+  const [failed, setFailed] = useState(false)
+  if (!domain || failed) {
+    return <span className="brokerage-card__initial">{name.charAt(0)}</span>
+  }
+  return (
+    <img src={`https://www.google.com/s2/favicons?domain=${domain}&sz=128`} alt="" onError={() => setFailed(true)} />
+  )
+}
 
 export default function Brokerage() {
   const [searchParams, setSearchParams] = useSearchParams()
@@ -22,12 +35,14 @@ export default function Brokerage() {
   const loadConnections = useCallback(() => {
     getJSON('/brokerage/connections')
       .then(setConnections)
-      .then(loadPortfolio)
       .catch((err) => setError(err.message))
-  }, [loadPortfolio])
+  }, [])
 
   useEffect(() => {
     if (searchParams.get('connected')) {
+      // Unlike the normal load below, this can't run in parallel: /sync writes
+      // newly-discovered accounts to the DB, and /portfolio needs that write
+      // committed first or it'll compute totals against the pre-sync account set.
       postJSON('/brokerage/sync')
         .then(setConnections)
         .then(loadPortfolio)
@@ -35,6 +50,7 @@ export default function Brokerage() {
         .finally(() => setSearchParams({}, { replace: true }))
     } else {
       loadConnections()
+      loadPortfolio()
     }
   }, [searchParams, setSearchParams, loadConnections, loadPortfolio])
 
@@ -65,45 +81,57 @@ export default function Brokerage() {
 
   return (
     <div className="brokerage-page">
-      <h1>Brokerage accounts</h1>
-      <p className="brokerage-page__subtitle">
-        Read-only. Positions and balances are fetched live and never stored here.
-      </p>
-      <button type="button" onClick={handleConnect} disabled={isConnecting}>
-        {isConnecting ? 'Redirecting…' : 'Connect brokerage'}
-      </button>
+      <div className="brokerage-page__header">
+        <div>
+          <h1>Brokerage accounts</h1>
+          <p className="brokerage-page__subtitle">
+            Read-only. Positions and balances are fetched live and never stored here.
+          </p>
+        </div>
+        <button type="button" onClick={handleConnect} disabled={isConnecting}>
+          {isConnecting ? 'Redirecting…' : 'Connect brokerage'}
+        </button>
+      </div>
       {error && <p className="brokerage-page__error">{error}</p>}
 
       {connections === null && (
-        <div className="brokerage-connections">
-          <div className="brokerage-connections__row">
-            <Skeleton width="120px" height="0.9em" />
-            <Skeleton width="60px" height="1.2em" />
-          </div>
+        <div className="brokerage-cards">
+          <Skeleton width="180px" height="52px" />
         </div>
       )}
 
-      {hasConnections && <PortfolioOverview portfolio={portfolio} />}
+      {hasConnections && (
+        <div className="brokerage-cards">
+          {connections.map((connection) => {
+            const name = connection.brokerage_name ?? 'Unknown brokerage'
+            return (
+              <div key={connection.id} className="brokerage-card">
+                <div className="brokerage-card__logo">
+                  <BrokerageLogo domain={connection.brokerage_domain} name={name} />
+                </div>
+                <div className="brokerage-card__info">
+                  <span className="brokerage-card__name">{name}</span>
+                  <span className={`brokerage-card__status brokerage-card__status--${connection.status}`}>
+                    {connection.status}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  className="brokerage-card__remove"
+                  onClick={() => handleDisconnect(connection.id)}
+                  aria-label={`Disconnect ${name}`}
+                >
+                  ×
+                </button>
+              </div>
+            )
+          })}
+        </div>
+      )}
 
       {connections?.length === 0 && <p className="brokerage-page__empty">No brokerages connected yet.</p>}
 
-      {hasConnections && (
-        <div className="brokerage-connections">
-          {connections.map((connection) => (
-            <div key={connection.id} className="brokerage-connections__row">
-              <span className="brokerage-connections__name">{connection.brokerage_name ?? 'Unknown brokerage'}</span>
-              <span className={`brokerage-connections__status brokerage-connections__status--${connection.status}`}>
-                {connection.status}
-              </span>
-              <button type="button" onClick={() => handleDisconnect(connection.id)}>
-                Disconnect
-              </button>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {hasConnections && <AccountTabs connections={connections} />}
+      {hasConnections && <PortfolioOverview portfolio={portfolio} connections={connections} />}
     </div>
   )
 }

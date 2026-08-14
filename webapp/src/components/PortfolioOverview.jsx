@@ -1,9 +1,13 @@
-import { useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { getJSON } from '../api/client'
 import { derivePositionRow } from './positionRow'
 import PortfolioTreemap from './PortfolioTreemap'
 import PositionsTable from './PositionsTable'
 import Skeleton from './Skeleton'
+import SkeletonRows from './SkeletonRows'
 import './PortfolioOverview.css'
+
+const ORDER_SKELETON_WIDTHS = ['70px', '50px', '80%', '55px']
 
 function formatSigned(value, digits = 2) {
   return `${value >= 0 ? '+' : ''}${value.toFixed(digits)}`
@@ -14,9 +18,55 @@ function formatSigned(value, digits = 2) {
  * rather than a row of equal-weight stat tiles. `portfolio` is null while
  * loading - the per-symbol day-change lookups behind it can take a while
  * for a large portfolio, so this shows a skeleton hero + table rather
- * than nothing until it resolves. */
-export default function PortfolioOverview({ portfolio }) {
+ * than nothing until it resolves.
+ *
+ * Positions/Orders and the account picker are independent of each other:
+ * switching accounts re-scopes whichever tab is active, rather than
+ * resetting to Positions. "All accounts" reuses the already-loaded
+ * combined `portfolio` for positions; everything else (combined orders,
+ * every account's positions/orders) is prefetched in the background as
+ * soon as the account list is known, so switching tabs/accounts reads
+ * from cache instead of round-tripping. */
+export default function PortfolioOverview({ portfolio, connections }) {
+  const accounts = useMemo(
+    () =>
+      (connections ?? []).flatMap((connection) =>
+        connection.accounts.map((account) => ({ ...account, brokerageName: connection.brokerage_name }))
+      ),
+    [connections]
+  )
+
+  const [tab, setTab] = useState('positions')
   const [view, setView] = useState('table')
+  const [accountId, setAccountId] = useState('all')
+  const [positionsByAccount, setPositionsByAccount] = useState({})
+  const [ordersByAccount, setOrdersByAccount] = useState({})
+
+  useEffect(() => {
+    if (accounts.length === 0) return
+
+    // Deferred to idle time so this background warm-up doesn't compete
+    // with the page's own critical requests (connections/portfolio) for
+    // the browser's limited per-host connection slots - those should
+    // finish and paint first, then the cache fills in quietly.
+    const requestIdle = window.requestIdleCallback ?? ((callback) => setTimeout(callback, 300))
+    const cancelIdle = window.cancelIdleCallback ?? clearTimeout
+
+    const handle = requestIdle(() => {
+      getJSON('/brokerage/orders').then((orders) =>
+        setOrdersByAccount((prev) => (prev.all ? prev : { ...prev, all: orders }))
+      )
+      accounts.forEach((account) => {
+        getJSON(`/brokerage/accounts/${account.id}/positions`).then((positions) =>
+          setPositionsByAccount((prev) => (prev[account.id] ? prev : { ...prev, [account.id]: positions }))
+        )
+        getJSON(`/brokerage/accounts/${account.id}/transactions`).then((orders) =>
+          setOrdersByAccount((prev) => (prev[account.id] ? prev : { ...prev, [account.id]: orders }))
+        )
+      })
+    })
+    return () => cancelIdle(handle)
+  }, [accounts])
 
   if (!portfolio) {
     return (
@@ -43,6 +93,11 @@ export default function PortfolioOverview({ portfolio }) {
   const totalCash = portfolio.balances.reduce((sum, balance) => sum + balance.cash, 0)
   const dayChangeSign = dayChangeDollar == null ? '' : dayChangeDollar >= 0 ? 'good' : 'bad'
 
+  const positions = accountId === 'all' ? portfolio.positions : positionsByAccount[accountId]
+  const isLoadingPositions = accountId !== 'all' && !positionsByAccount[accountId]
+  const orders = ordersByAccount[accountId]
+  const isLoadingOrders = tab === 'orders' && !orders
+
   return (
     <div className="portfolio-overview">
       <div className="portfolio-overview__hero">
@@ -55,30 +110,118 @@ export default function PortfolioOverview({ portfolio }) {
       </div>
       {totalCash > 0 && <p className="portfolio-overview__cash">{totalCash.toFixed(2)} cash uninvested</p>}
 
+      <div className="portfolio-overview__tabs">
+        <button
+          type="button"
+          className={`portfolio-overview__tab ${tab === 'positions' ? 'portfolio-overview__tab--active' : ''}`}
+          onClick={() => setTab('positions')}
+        >
+          Positions
+        </button>
+        <button
+          type="button"
+          className={`portfolio-overview__tab ${tab === 'orders' ? 'portfolio-overview__tab--active' : ''}`}
+          onClick={() => setTab('orders')}
+        >
+          Orders
+        </button>
+      </div>
+
       <div className="portfolio-overview__view-header">
         <span className="eyebrow">
-          {view === 'table' ? 'Holdings' : "Holdings by size, colored by today's change"}
+          {tab === 'orders' ? 'Orders' : view === 'table' ? 'Holdings' : "Holdings by size, colored by today's change"}
         </span>
-        <div className="portfolio-overview__view-toggle" role="group" aria-label="Holdings view">
-          <button
-            className={`portfolio-overview__view-btn${view === 'table' ? ' portfolio-overview__view-btn--active' : ''}`}
-            onClick={() => setView('table')}
+        <div className="portfolio-overview__controls">
+          <select
+            className="portfolio-overview__account-select"
+            value={accountId}
+            onChange={(event) => setAccountId(event.target.value === 'all' ? 'all' : Number(event.target.value))}
+            aria-label="Account"
           >
-            Table
-          </button>
-          <button
-            className={`portfolio-overview__view-btn${view === 'heatmap' ? ' portfolio-overview__view-btn--active' : ''}`}
-            onClick={() => setView('heatmap')}
-          >
-            Heatmap
-          </button>
+            <option value="all">All accounts</option>
+            {accounts.map((account) => (
+              <option key={account.id} value={account.id}>
+                {account.brokerageName} · {account.name ?? 'Account'}
+              </option>
+            ))}
+          </select>
+          {tab === 'positions' && (
+            <div className="portfolio-overview__view-toggle" role="group" aria-label="Holdings view">
+              <button
+                className={`portfolio-overview__view-btn${view === 'table' ? ' portfolio-overview__view-btn--active' : ''}`}
+                onClick={() => setView('table')}
+              >
+                Table
+              </button>
+              <button
+                className={`portfolio-overview__view-btn${view === 'heatmap' ? ' portfolio-overview__view-btn--active' : ''}`}
+                onClick={() => setView('heatmap')}
+              >
+                Heatmap
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
-      {view === 'heatmap' ? (
-        <PortfolioTreemap positions={portfolio.positions} />
+      {tab === 'positions' ? (
+        view === 'heatmap' ? (
+          <PortfolioTreemap positions={positions ?? []} />
+        ) : (
+          <PositionsTable positions={positions} isLoading={isLoadingPositions} />
+        )
+      ) : isLoadingOrders ? (
+        <table className="portfolio-overview__table">
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Type</th>
+              <th>Description</th>
+              <th>Amount</th>
+            </tr>
+          </thead>
+          <tbody>
+            <SkeletonRows columns={4} widths={ORDER_SKELETON_WIDTHS} />
+          </tbody>
+        </table>
+      ) : orders.length === 0 ? (
+        <p className="portfolio-overview__empty">No orders.</p>
       ) : (
-        <PositionsTable positions={portfolio.positions} />
+        <table className="portfolio-overview__table">
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Type</th>
+              <th>Description</th>
+              <th>Amount</th>
+            </tr>
+          </thead>
+          <tbody>
+            {orders.map((activity) => (
+              <tr key={activity.id}>
+                <td className="num">{activity.trade_date?.slice(0, 10)}</td>
+                <td>
+                  {activity.type && (
+                    <span
+                      className={`portfolio-overview__order-type portfolio-overview__order-type--${activity.type.toLowerCase()}`}
+                    >
+                      {activity.type}
+                    </span>
+                  )}
+                </td>
+                <td>
+                  {activity.description}
+                  {accountId === 'all' && activity.account_name && (
+                    <span className="portfolio-overview__order-account"> · {activity.account_name}</span>
+                  )}
+                </td>
+                <td className={`num ${activity.amount == null ? '' : activity.amount >= 0 ? 'text-good' : 'text-critical'}`}>
+                  {activity.amount == null ? '—' : `${activity.amount >= 0 ? '+' : ''}${activity.amount.toFixed(2)}`}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       )}
     </div>
   )
