@@ -44,6 +44,13 @@ class ConnectionResponse(BaseModel):
     accounts: list[AccountResponse]
 
 
+class ExtendedHoursResponse(BaseModel):
+    session: str  # 'pre' or 'post'
+    price: float
+    percent: float
+    absolute: float
+
+
 class PositionResponse(BaseModel):
     symbol: str
     description: str | None
@@ -51,6 +58,7 @@ class PositionResponse(BaseModel):
     price: float
     price_change: float | None  # per-share $ change today, from yfinance - SnapTrade has no day-change field
     price_change_percent: float | None
+    extended_hours: ExtendedHoursResponse | None = None
     cost_basis: float | None  # per-unit average cost, as SnapTrade returns it - NOT the position total
     currency: str | None
 
@@ -87,6 +95,7 @@ class PortfolioPosition(BaseModel):
     value: float
     price_change: float | None
     price_change_percent: float | None
+    extended_hours: ExtendedHoursResponse | None = None
     total_cost_basis: float | None  # sum of units * per-unit cost_basis across accounts - a total, unlike PositionResponse.cost_basis
     currency: str | None
 
@@ -269,13 +278,18 @@ def disconnect(
 def _day_change_or_none(symbol: str) -> dict:
     try:
         change = get_day_change(symbol)
-        return {"price_change": change["absolute"], "price_change_percent": change["percent"]}
+        return {
+            "price_change": change["absolute"],
+            "price_change_percent": change["percent"],
+            "extended_hours": change["extended_hours"],
+        }
     except Exception:
-        return {"price_change": None, "price_change_percent": None}
+        return {"price_change": None, "price_change_percent": None, "extended_hours": None}
 
 
 def _with_day_change(positions: list[dict]) -> list[dict]:
-    """Adds price_change/price_change_percent from tools.get_day_change
+    """Adds price_change/price_change_percent (and extended_hours, when the
+    market is currently pre/post market) from tools.get_day_change
     (yfinance) - SnapTrade's position data has no day-change field at
     all. Fetched concurrently (parallel_map) since a large portfolio can
     have 50+ distinct symbols and these are sequential network round-trips

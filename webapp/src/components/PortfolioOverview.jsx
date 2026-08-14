@@ -38,6 +38,7 @@ export default function PortfolioOverview({ portfolio, connections }) {
 
   const [tab, setTab] = useState('positions')
   const [view, setView] = useState('table')
+  const [afterHours, setAfterHours] = useState(false)
   const [accountId, setAccountId] = useState('all')
   const [positionsByAccount, setPositionsByAccount] = useState({})
   const [ordersByAccount, setOrdersByAccount] = useState({})
@@ -93,6 +94,18 @@ export default function PortfolioOverview({ portfolio, connections }) {
   const totalCash = portfolio.balances.reduce((sum, balance) => sum + balance.cash, 0)
   const dayChangeSign = dayChangeDollar == null ? '' : dayChangeDollar >= 0 ? 'good' : 'bad'
 
+  const knownExtendedHoursRows = rows.filter((row) => row.extendedHoursDollarChange != null)
+  const extendedHoursDollar = knownExtendedHoursRows.length
+    ? knownExtendedHoursRows.reduce((sum, row) => sum + row.extendedHoursDollarChange, 0)
+    : null
+  const extendedHoursPercent =
+    extendedHoursDollar != null && portfolio.total_value
+      ? (extendedHoursDollar / portfolio.total_value) * 100
+      : null
+  const extendedHoursSession = knownExtendedHoursRows[0]?.extendedHoursSession ?? null
+  const extendedHoursSign = extendedHoursDollar == null ? '' : extendedHoursDollar >= 0 ? 'good' : 'bad'
+  const extendedHoursTotalValue = extendedHoursDollar != null ? portfolio.total_value + extendedHoursDollar : null
+
   const positions = accountId === 'all' ? portfolio.positions : positionsByAccount[accountId]
   const isLoadingPositions = accountId !== 'all' && !positionsByAccount[accountId]
   const orders = ordersByAccount[accountId]
@@ -108,6 +121,17 @@ export default function PortfolioOverview({ portfolio, connections }) {
           </span>
         )}
       </div>
+      {afterHours && extendedHoursTotalValue != null && (
+        <div className="portfolio-overview__extended">
+          <span className="portfolio-overview__extended-label">
+            {extendedHoursSession === 'pre' ? 'Pre-market' : 'After hours'}
+          </span>
+          <span className="portfolio-overview__extended-value">{extendedHoursTotalValue.toFixed(2)}</span>
+          <span className={`portfolio-overview__change portfolio-overview__change--${extendedHoursSign}`}>
+            {formatSigned(extendedHoursDollar)} ({formatSigned(extendedHoursPercent)}%)
+          </span>
+        </div>
+      )}
       {totalCash > 0 && <p className="portfolio-overview__cash">{totalCash.toFixed(2)} cash uninvested</p>}
 
       <div className="portfolio-overview__tabs">
@@ -145,6 +169,16 @@ export default function PortfolioOverview({ portfolio, connections }) {
               </option>
             ))}
           </select>
+          {tab === 'positions' && view === 'table' && (
+            <button
+              type="button"
+              className={`portfolio-overview__view-btn portfolio-overview__ah-toggle${afterHours ? ' portfolio-overview__view-btn--active' : ''}`}
+              onClick={() => setAfterHours((prev) => !prev)}
+              aria-pressed={afterHours}
+            >
+              After Hours
+            </button>
+          )}
           {tab === 'positions' && (
             <div className="portfolio-overview__view-toggle" role="group" aria-label="Holdings view">
               <button
@@ -168,7 +202,7 @@ export default function PortfolioOverview({ portfolio, connections }) {
         view === 'heatmap' ? (
           <PortfolioTreemap positions={positions ?? []} />
         ) : (
-          <PositionsTable positions={positions} isLoading={isLoadingPositions} />
+          <PositionsTable positions={positions} isLoading={isLoadingPositions} showAfterHours={afterHours} />
         )
       ) : isLoadingOrders ? (
         <table className="portfolio-overview__table">

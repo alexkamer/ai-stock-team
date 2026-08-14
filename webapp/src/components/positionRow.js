@@ -14,6 +14,7 @@ export function derivePositionRow(position) {
   const dayChangeDollar = position.price_change != null ? units * position.price_change : null
   const gainDollar = costBasisTotal != null && value != null ? value - costBasisTotal : null
   const gainPercent = gainDollar != null && costBasisTotal ? (gainDollar / costBasisTotal) * 100 : null
+  const extendedHours = position.extended_hours ?? null
 
   return {
     symbol: position.symbol,
@@ -28,6 +29,10 @@ export function derivePositionRow(position) {
     costBasisTotal,
     gainDollar,
     gainPercent,
+    extendedHoursSession: extendedHours?.session ?? null,
+    extendedHoursPrice: extendedHours?.price ?? null,
+    extendedHoursChangePercent: extendedHours?.percent ?? null,
+    extendedHoursDollarChange: extendedHours ? units * extendedHours.absolute : null,
   }
 }
 
@@ -43,4 +48,9 @@ export const POSITION_COLUMNS = [
   { key: 'costBasisTotal', label: 'Cost Basis' },
   { key: 'gainDollar', label: 'Gain $' },
   { key: 'gainPercent', label: 'Gain %' },
+]
+
+export const AFTER_HOURS_COLUMNS = [
+  { key: 'extendedHoursPrice', label: 'AH Price' },
+  { key: 'extendedHoursChangePercent', label: 'AH Chg %' },
 ]

@@ -35,6 +35,25 @@
   color: var(--text-muted);
 }
 
+.portfolio-overview__extended {
+  display: flex;
+  align-items: baseline;
+  gap: 0.85rem;
+  margin: 0.5rem 0 1.75rem;
+}
+
+.portfolio-overview__extended-label {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.portfolio-overview__extended-value {
+  font: 600 1.35rem var(--display);
+  color: var(--text-secondary);
+}
+
 .portfolio-overview__tabs {
   display: flex;
   gap: 1.25rem;
@@ -116,6 +135,16 @@
   background: var(--signal-bg);
   color: var(--signal);
   font-weight: 600;
+}
+
+.portfolio-overview__ah-toggle {
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--surface-2);
+}
+
+.portfolio-overview__ah-toggle.portfolio-overview__view-btn--active {
+  border-color: var(--signal);
 }
 
 .portfolio-overview__empty {

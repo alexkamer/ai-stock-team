@@ -1,10 +1,15 @@
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { derivePositionRow, POSITION_COLUMNS } from './positionRow'
+import { AFTER_HOURS_COLUMNS, derivePositionRow, POSITION_COLUMNS } from './positionRow'
 import SkeletonRows from './SkeletonRows'
 import './PositionsTable.css'
 
 const SKELETON_WIDTHS = ['60px', '35px', '50px', '45px', '40px', '60px', '45px', '40px', '55px', '45px', '40px']
+const AFTER_HOURS_SKELETON_WIDTHS = ['50px', '40px']
+
+function formatAfterHoursPrice(value) {
+  return value == null ? '—' : value.toFixed(2)
+}
 
 function formatDollar(value) {
   if (value == null) return '—'
@@ -25,10 +30,13 @@ function signClass(value) {
  * endpoint with the same 11-column layout, sortable by any column.
  * `isLoading` keeps the real headers on screen with skeleton rows
  * underneath, instead of the whole table popping in once data arrives. */
-export default function PositionsTable({ positions, isLoading = false }) {
+export default function PositionsTable({ positions, isLoading = false, showAfterHours = false }) {
   const [sort, setSort] = useState({ key: 'symbol', dir: 1 })
 
   const rows = useMemo(() => (positions ?? []).map(derivePositionRow), [positions])
+  const columns = showAfterHours
+    ? [...POSITION_COLUMNS.slice(0, 3), ...AFTER_HOURS_COLUMNS, ...POSITION_COLUMNS.slice(3)]
+    : POSITION_COLUMNS
 
   const sortedRows = useMemo(() => {
     return [...rows].sort((a, b) => {
@@ -53,7 +61,7 @@ export default function PositionsTable({ positions, isLoading = false }) {
       <table className="positions-table">
         <thead>
           <tr>
-            {POSITION_COLUMNS.map((column) => (
+            {columns.map((column) => (
               <th key={column.key}>
                 <button type="button" onClick={() => handleSort(column.key)}>
                   {column.label}
@@ -65,7 +73,14 @@ export default function PositionsTable({ positions, isLoading = false }) {
         </thead>
         <tbody>
           {isLoading ? (
-            <SkeletonRows columns={POSITION_COLUMNS.length} widths={SKELETON_WIDTHS} />
+            <SkeletonRows
+              columns={columns.length}
+              widths={
+                showAfterHours
+                  ? [...SKELETON_WIDTHS.slice(0, 3), ...AFTER_HOURS_SKELETON_WIDTHS, ...SKELETON_WIDTHS.slice(3)]
+                  : SKELETON_WIDTHS
+              }
+            />
           ) : (
             sortedRows.map((row) => (
               <tr key={row.symbol}>
@@ -77,6 +92,16 @@ export default function PositionsTable({ positions, isLoading = false }) {
                 </td>
                 <td className="num">{row.units}</td>
                 <td className="num">{row.price == null ? '—' : row.price.toFixed(2)}</td>
+                {showAfterHours && (
+                  <>
+                    <td className="num positions-table__ah-price" title={row.extendedHoursSession === 'pre' ? 'Pre-market' : row.extendedHoursSession === 'post' ? 'After hours' : undefined}>
+                      {formatAfterHoursPrice(row.extendedHoursPrice)}
+                    </td>
+                    <td className={`num ${signClass(row.extendedHoursChangePercent)}`}>
+                      {formatPercent(row.extendedHoursChangePercent)}
+                    </td>
+                  </>
+                )}
                 <td className={`num ${signClass(row.priceChange)}`}>{formatDollar(row.priceChange)}</td>
                 <td className={`num ${signClass(row.priceChangePercent)}`}>{formatPercent(row.priceChangePercent)}</td>
                 <td className="num">{row.value == null ? '—' : row.value.toFixed(2)}</td>
