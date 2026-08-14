@@ -442,3 +442,19 @@
     grid-column: span 2;
   }
 }
+
+.ticker-detail__chart-card-head {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 8px;
+}
+
+.ticker-detail__advanced-chart-link {
+  font-size: 12px;
+  color: var(--text-secondary);
+  text-decoration: none;
+}
+
+.ticker-detail__advanced-chart-link:hover {
+  color: var(--signal);
+}

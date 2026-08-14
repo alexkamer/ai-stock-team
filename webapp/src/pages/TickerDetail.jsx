@@ -377,6 +377,11 @@ export default function TickerDetail() {
           </div>
 
           <div className="card">
+            <div className="ticker-detail__chart-card-head">
+              <Link to={`/research/advanced-charts?symbol=${ticker}`} className="ticker-detail__advanced-chart-link">
+                Open in Advanced Charts →
+              </Link>
+            </div>
             <PriceChart
               ticker={ticker}
               prices={prices}
