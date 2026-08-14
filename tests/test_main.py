@@ -3,7 +3,7 @@ nothing hits the real Bedrock API, and mocks yf.Ticker so nothing hits the
 network - see lessons/10_testing_agents.py.
 """
 
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from pydantic_ai.models.test import TestModel
@@ -17,6 +17,13 @@ def clear_info_cache():
     tools._info_cache.clear()
     yield
     tools._info_cache.clear()
+
+
+@pytest.fixture(autouse=True)
+def clear_sentiment_cache():
+    main._sentiment_cache.clear()
+    yield
+    main._sentiment_cache.clear()
 
 
 def make_output_args(**overrides):
@@ -96,3 +103,72 @@ def test_override_only_applies_inside_the_with_block():
         main.get_snapshot("AAPL")
 
     assert test_model.last_model_request_parameters is not None
+
+
+@pytest.mark.asyncio
+async def test_get_sentiment_streaming_caches_repeat_calls_for_same_headlines():
+    test_model = TestModel(custom_output_args={"sentiment": "bullish", "summary": "Strong quarter."})
+    headlines = ["Nvidia beats estimates"]
+
+    with main.sentiment_agent.override(model=test_model):
+        real_run = main.sentiment_agent.run
+        with patch.object(main.sentiment_agent, "run", AsyncMock(wraps=real_run)) as mock_run:
+            first = await main.get_sentiment_streaming("NVDA", headlines)
+            second = await main.get_sentiment_streaming("NVDA", headlines)
+
+    assert first.sentiment == "bullish"
+    assert second.sentiment == "bullish"
+    mock_run.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_get_sentiment_streaming_cache_misses_on_new_headlines():
+    test_model = TestModel(custom_output_args={"sentiment": "bullish", "summary": "Strong quarter."})
+
+    with main.sentiment_agent.override(model=test_model):
+        real_run = main.sentiment_agent.run
+        with patch.object(main.sentiment_agent, "run", AsyncMock(wraps=real_run)) as mock_run:
+            await main.get_sentiment_streaming("NVDA", ["Nvidia beats estimates"])
+            await main.get_sentiment_streaming("NVDA", ["A different headline"])
+
+    assert mock_run.call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_get_portfolio_digest_logs_usage_when_db_passed():
+    test_model = TestModel(
+        custom_output_args={
+            "headline": "Portfolio up",
+            "article": "Paragraph one.",
+            "key_drivers": ["NVDA up"],
+            "watch_items": ["Earnings next week"],
+        }
+    )
+
+    with main.digest_agent.override(model=test_model), patch("agents.main.log_llm_usage") as mock_log:
+        db = object()
+        digest = await main.get_portfolio_digest("some context", db=db, user_id=7)
+
+    assert digest.headline == "Portfolio up"
+    mock_log.assert_called_once()
+    args = mock_log.call_args.args
+    assert args[0] is db
+    assert args[1] == 7
+    assert args[2] == "digest"
+
+
+@pytest.mark.asyncio
+async def test_get_portfolio_digest_skips_logging_without_db():
+    test_model = TestModel(
+        custom_output_args={
+            "headline": "Portfolio up",
+            "article": "Paragraph one.",
+            "key_drivers": ["NVDA up"],
+            "watch_items": ["Earnings next week"],
+        }
+    )
+
+    with main.digest_agent.override(model=test_model), patch("agents.main.log_llm_usage") as mock_log:
+        await main.get_portfolio_digest("some context")
+
+    mock_log.assert_not_called()

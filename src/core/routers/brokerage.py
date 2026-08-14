@@ -7,16 +7,20 @@ app), so `user_id` on a row is about who in *our* app can see/manage it,
 not brokerage-level isolation.
 """
 
+from datetime import datetime, timezone
+
+import requests
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session as DbSession
 
 import core.snaptrade_client as snaptrade
+from agents.main import get_portfolio_digest
 from core.audit import log_event
 from core.auth import get_current_user
 from core.db import get_db
 from core.models_db import BrokerageAccount, BrokerageConnection, User
-from core.tools import get_day_change, parallel_map
+from core.tools import get_day_change, get_market_news, parallel_map, scrape_article
 
 router = APIRouter(prefix="/brokerage", tags=["brokerage"])
 
@@ -104,6 +108,23 @@ class PortfolioResponse(BaseModel):
     total_value: float
     balances: list[PortfolioBalance]
     positions: list[PortfolioPosition]
+
+
+class DigestSource(BaseModel):
+    index: int
+    ticker: str
+    title: str
+    publisher: str
+    url: str
+
+
+class DigestResponse(BaseModel):
+    headline: str
+    article: str
+    key_drivers: list[str]
+    watch_items: list[str]
+    sources: list[DigestSource]
+    generated_at: str
 
 
 @router.post("/connect", response_model=ConnectResponse)
@@ -234,6 +255,27 @@ def get_portfolio(user: User = Depends(get_current_user), db: DbSession = Depend
     )
 
 
+@router.post("/digest", response_model=DigestResponse)
+async def generate_digest(user: User = Depends(get_current_user), db: DbSession = Depends(get_db)):
+    """Generates a long-form article explaining today's portfolio
+    performance - a real Bedrock call, so unlike the rest of this router
+    it's only ever made when the user explicitly clicks for it (no
+    schedule, no auto-refresh alongside the 30s price polling elsewhere on
+    this page)."""
+    portfolio = get_portfolio(user, db)
+    if not portfolio.positions:
+        raise HTTPException(status_code=400, detail="No positions to summarize yet")
+
+    context, sources = _build_digest_context(portfolio)
+    digest = await get_portfolio_digest(context, db=db, user_id=user.id)
+    log_event(db, user.id, "digest_generated")
+    return DigestResponse(
+        **digest.model_dump(),
+        sources=sources,
+        generated_at=datetime.now(timezone.utc).isoformat(),
+    )
+
+
 @router.get("/orders", response_model=list[ActivityResponse])
 def get_orders(user: User = Depends(get_current_user), db: DbSession = Depends(get_db)):
     """Combines recent activity across every active account, newest first,
@@ -300,6 +342,110 @@ def _with_day_change(positions: list[dict]) -> list[dict]:
     for position in positions:
         position.update(changes[position["symbol"]])
     return positions
+
+
+# Size of the ranked news pool considered for the digest, and how many of
+# those (already down-ranked away from low-readability publishers - see
+# tools.LOW_READABILITY_PUBLISHERS) are worth an actual scrape attempt.
+# Scraping is plain network I/O with no LLM cost, so this bounds latency and
+# site politeness, not token spend.
+_DIGEST_NEWS_POOL = 12
+_DIGEST_SCRAPE_LIMIT = 5
+
+# How much of a scraped article's text to hand the digest agent - a few
+# paragraphs of context is plenty for "why did this move" reasoning and
+# keeps the prompt (and thus token spend) bounded regardless of article length.
+_DIGEST_SCRAPE_CHARS = 2000
+
+
+def _build_digest_context(portfolio: PortfolioResponse) -> tuple[str, list[DigestSource]]:
+    """Assembles the plain-text context handed to get_portfolio_digest:
+    holdings sorted by size of today's move, plus relevant news (full text
+    where a scrape attempt succeeded and wasn't paywalled, otherwise just
+    the headline/synopsis yfinance already provides). Each news item is
+    numbered ([1], [2], ...) in the context text so the digest agent can
+    cite it inline - those same numbers are returned as `sources` so the
+    frontend can render clickable citations regardless of which ones the
+    model actually used."""
+    rows = []
+    for position in portfolio.positions:
+        day_change_dollar = (
+            position.units * position.price_change if position.price_change is not None else None
+        )
+        gain_dollar = (
+            position.value - position.total_cost_basis if position.total_cost_basis is not None else None
+        )
+        rows.append(
+            {
+                "symbol": position.symbol,
+                "value": position.value,
+                "day_change_dollar": day_change_dollar,
+                "day_change_percent": position.price_change_percent,
+                "gain_dollar": gain_dollar,
+            }
+        )
+    rows.sort(key=lambda r: abs(r["day_change_dollar"] or 0), reverse=True)
+
+    known_changes = [r["day_change_dollar"] for r in rows if r["day_change_dollar"] is not None]
+    total_day_change = sum(known_changes) if known_changes else None
+    previous_total_value = portfolio.total_value - total_day_change if total_day_change is not None else None
+    total_day_change_percent = (
+        total_day_change / previous_total_value if previous_total_value else None
+    )
+
+    lines = [
+        f"Portfolio total value: ${portfolio.total_value:,.2f}",
+        (
+            f"Today's change: {total_day_change:+,.2f} ({total_day_change_percent:+.2%})"
+            if total_day_change is not None and total_day_change_percent is not None
+            else "Today's change: unknown"
+        ),
+        "",
+        "Holdings, sorted by size of today's move:",
+    ]
+    for r in rows:
+        change = (
+            f"{r['day_change_dollar']:+,.2f} ({r['day_change_percent']:+.2f}%)"
+            if r["day_change_dollar"] is not None
+            else "day change unknown"
+        )
+        gain = f", total gain {r['gain_dollar']:+,.2f}" if r["gain_dollar"] is not None else ""
+        lines.append(f"- {r['symbol']}: value ${r['value']:,.2f}, today {change}{gain}")
+
+    symbols = [r["symbol"] for r in rows]
+    articles = get_market_news(symbols, limit=_DIGEST_NEWS_POOL)
+
+    scrape_urls = [a["url"] for a in articles if not a["likely_unreadable"]][:_DIGEST_SCRAPE_LIMIT]
+    scraped_by_url = dict(zip(scrape_urls, parallel_map(_try_scrape_for_digest, scrape_urls)))
+
+    lines += ["", "Recent news for these holdings:"]
+    sources = []
+    for i, article in enumerate(articles, start=1):
+        full_text = scraped_by_url.get(article["url"])
+        body = full_text or article["summary"] or "(no summary available)"
+        note = "" if full_text else " [headline/synopsis only, full article not reliably readable]"
+        lines.append(f"- [{i}] ({article['ticker']}) {article['title']} ({article['publisher']}){note}: {body}")
+        sources.append(
+            DigestSource(
+                index=i,
+                ticker=article["ticker"],
+                title=article["title"],
+                publisher=article["publisher"],
+                url=article["url"],
+            )
+        )
+
+    return "\n".join(lines), sources
+
+
+def _try_scrape_for_digest(url: str) -> str | None:
+    try:
+        scraped = scrape_article(url)
+    except requests.RequestException:
+        return None
+    if scraped["looks_paywalled"] or not scraped["text"].strip():
+        return None
+    return scraped["text"][:_DIGEST_SCRAPE_CHARS]
 
 
 def _get_owned_account(db: DbSession, user: User, account_id: int) -> BrokerageAccount:

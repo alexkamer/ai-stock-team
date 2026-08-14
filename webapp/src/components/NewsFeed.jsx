@@ -67,6 +67,10 @@ function NewsRow({ article, showTicker, summarizable }) {
           {article.summary && <p className="news-row__preview">{article.summary}</p>}
           <span className="news-row__meta">
             {showTicker && <TickerBadge ticker={article.ticker} percent={article.ticker_day_change_percent} />}
+            {showTicker &&
+              article.related_tickers?.map((related) => (
+                <TickerBadge key={related.ticker} ticker={related.ticker} percent={related.day_change_percent} />
+              ))}
             {article.publisher}
             {article.publisher && article.published_at ? ' · ' : ''}
             {timeAgo(article.published_at)}
@@ -75,14 +79,18 @@ function NewsRow({ article, showTicker, summarizable }) {
       </a>
       {summarizable && (
         <div className="news-row__extra">
-          <ArticleSummary url={article.url} />
+          {article.likely_unreadable ? (
+            <p className="news-row__summary news-row__summary--error">Full article isn't reliably readable here.</p>
+          ) : (
+            <ArticleSummary url={article.url} />
+          )}
         </div>
       )}
     </div>
   )
 }
 
-export default function NewsFeed({ articles, showTicker = true, summarizable = false }) {
+export default function NewsFeed({ articles, showTicker = true, summarizable = false, emptyMessage = 'No recent headlines for your watchlist.' }) {
   if (articles === null) {
     return (
       <div className="card news-feed">
@@ -92,7 +100,7 @@ export default function NewsFeed({ articles, showTicker = true, summarizable = f
   }
 
   if (articles.length === 0) {
-    return <div className="card news-feed news-feed--empty">No recent headlines for your watchlist.</div>
+    return <div className="card news-feed news-feed--empty">{emptyMessage}</div>
   }
 
   return (

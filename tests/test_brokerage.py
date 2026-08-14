@@ -13,7 +13,9 @@ from sqlalchemy.pool import StaticPool
 
 from core import api
 from core.db import Base, get_db
+from core.models import PortfolioDigest
 from core.models_db import AuditLogEntry
+from core.routers.brokerage import PortfolioBalance, PortfolioPosition, PortfolioResponse, _build_digest_context
 
 client = TestClient(api.app)
 
@@ -284,3 +286,99 @@ def test_positions_get_none_price_change_when_day_change_lookup_fails(
     assert response.status_code == 200
     assert response.json()[0]["price_change"] is None
     assert response.json()[0]["price_change_percent"] is None
+
+
+def test_digest_with_no_positions_returns_400():
+    response = client.post("/brokerage/digest")
+    assert response.status_code == 400
+
+
+@patch("core.routers.brokerage.get_portfolio_digest")
+@patch("core.routers.brokerage.get_market_news")
+@patch("core.routers.brokerage.snaptrade.get_account_balances")
+@patch("core.routers.brokerage.snaptrade.get_account_positions")
+@patch("core.routers.brokerage.snaptrade.list_connection_accounts")
+@patch("core.routers.brokerage.snaptrade.list_connections")
+def test_digest_generates_article_and_logs_audit_event(
+    mock_list_connections, mock_list_accounts, mock_positions, mock_balances, mock_news, mock_digest, isolated_db
+):
+    account_id = _sync_one_account(mock_list_connections, mock_list_accounts)
+    mock_positions.return_value = [
+        {"symbol": "NVDA", "description": "NVIDIA Corp", "units": 1.0, "price": 200.0, "cost_basis": 180.0, "currency": "USD"}
+    ]
+    mock_balances.return_value = [{"currency": "USD", "cash": 0.0, "buying_power": 0.0}]
+    mock_news.return_value = [
+        {
+            "title": "NVDA rallies",
+            "summary": "Chips are up.",
+            "publisher": "Reuters",
+            "url": "https://example.com/a",
+            "published_at": "2026-08-13T12:00:00Z",
+            "thumbnail": None,
+            "ticker": "NVDA",
+            "ticker_day_change_percent": 1.5,
+            "related_tickers": [],
+            "likely_unreadable": False,
+        }
+    ]
+    mock_digest.return_value = PortfolioDigest(
+        headline="NVDA leads a strong day",
+        article="Paragraph one.\n\nParagraph two [1].",
+        key_drivers=["NVDA up on chip demand [1]"],
+        watch_items=["Upcoming earnings"],
+    )
+
+    response = client.post("/brokerage/digest")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["headline"] == "NVDA leads a strong day"
+    assert body["key_drivers"] == ["NVDA up on chip demand [1]"]
+    assert body["sources"] == [
+        {"index": 1, "ticker": "NVDA", "title": "NVDA rallies", "publisher": "Reuters", "url": "https://example.com/a"}
+    ]
+    assert "generated_at" in body
+
+    _, kwargs = mock_digest.call_args
+    assert kwargs["user_id"] is not None
+    assert kwargs["db"] is not None
+    mock_digest.assert_called_once()
+
+    db = isolated_db()
+    events = [e.event_type for e in db.query(AuditLogEntry).all()]
+    assert "digest_generated" in events
+    db.close()
+
+
+@patch("core.routers.brokerage._try_scrape_for_digest", return_value=None)
+@patch("core.routers.brokerage.get_market_news")
+def test_build_digest_context_numbers_sources_in_order(mock_news, mock_scrape):
+    mock_news.return_value = [
+        {
+            "title": "NVDA rallies", "summary": "Chips are up.", "publisher": "Reuters",
+            "url": "https://example.com/a", "published_at": "2026-08-13T12:00:00Z", "thumbnail": None,
+            "ticker": "NVDA", "ticker_day_change_percent": 1.5, "related_tickers": [], "likely_unreadable": False,
+        },
+        {
+            "title": "AAPL slips", "summary": "Supply concerns.", "publisher": "Bloomberg",
+            "url": "https://example.com/b", "published_at": "2026-08-13T12:00:00Z", "thumbnail": None,
+            "ticker": "AAPL", "ticker_day_change_percent": -0.5, "related_tickers": [], "likely_unreadable": False,
+        },
+    ]
+    portfolio = PortfolioResponse(
+        total_value=100.0,
+        balances=[PortfolioBalance(currency="USD", cash=0.0, buying_power=0.0)],
+        positions=[
+            PortfolioPosition(
+                symbol="NVDA", description="NVIDIA Corp", units=1.0, value=100.0,
+                price_change=2.0, price_change_percent=1.5, total_cost_basis=80.0, currency="USD",
+            )
+        ],
+    )
+
+    context, sources = _build_digest_context(portfolio)
+
+    assert "[1]" in context and "[2]" in context
+    assert [s.model_dump() for s in sources] == [
+        {"index": 1, "ticker": "NVDA", "title": "NVDA rallies", "publisher": "Reuters", "url": "https://example.com/a"},
+        {"index": 2, "ticker": "AAPL", "title": "AAPL slips", "publisher": "Bloomberg", "url": "https://example.com/b"},
+    ]

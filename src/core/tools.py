@@ -4,13 +4,14 @@ import re
 from collections.abc import Callable, Iterable
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
-from datetime import time
+from datetime import datetime, time, timedelta
 from time import monotonic
 from typing import TypeVar
 
 import requests
 import yfinance as yf
 from bs4 import BeautifulSoup
+from dateutil import parser as date_parser
 from dateutil.relativedelta import relativedelta
 from pydantic_ai import RunContext
 from yfinance import EquityQuery
@@ -633,12 +634,57 @@ def get_news_headlines(ticker: str, limit: int = 5) -> list[str]:
 NEWS_FETCH_COUNT = 30
 
 
+# Publishers found (via scripts/news_scrape_coverage.py) to be essentially
+# never readable past the headline - Motley Fool paywalls almost every
+# article, TheStreet's yfinance-supplied URLs 404 in practice, and Barron's/
+# WSJ are hard subscriber paywalls with no workaround. Penalized in ranking
+# and used to skip the doomed "Summarize" attempt client-side.
+LOW_READABILITY_PUBLISHERS = {"Motley Fool", "TheStreet", "Barrons.com", "The Wall Street Journal"}
+
+# Big enough to outweigh the max possible editors-pick+thumbnail bonus (3),
+# so a low-readability article never outranks an unadorned readable one.
+_LOW_READABILITY_PENALTY = 4
+
+
 def _article_quality_score(article: dict) -> int:
     """Editorial/visual quality signal used to rank "best" over "newest" -
     Yahoo's own editors' pick flag counts most, a thumbnail (needed for the
-    carousel/card treatments anyway) counts a little. Ties fall back to
-    recency via get_market_news' stable sort."""
-    return (2 if article["_editors_pick"] else 0) + (1 if article["thumbnail"] else 0)
+    carousel/card treatments anyway) counts a little, and a known-unreadable
+    publisher counts heavily against. Ties fall back to recency via
+    get_market_news' stable sort."""
+    score = (2 if article["_editors_pick"] else 0) + (1 if article["thumbnail"] else 0)
+    if article["publisher"] in LOW_READABILITY_PUBLISHERS:
+        score -= _LOW_READABILITY_PENALTY
+    return score
+
+
+# Matches on this after lowercasing/stripping punctuation - wire stories
+# (Reuters/AP/Bloomberg) routinely get pulled into several tickers' feeds
+# verbatim under different publisher domains and canonical URLs, so URL-only
+# dedup lets the same headline occupy multiple slots in the ranked pool.
+_TITLE_DEDUPE_RE = re.compile(r"[^a-z0-9]+")
+
+
+def _dedupe_title_key(title: str) -> str:
+    return _TITLE_DEDUPE_RE.sub(" ", title.lower()).strip()
+
+
+# Articles older than this rarely matter for a "what's moving now" feed, so
+# they're dropped before ranking rather than merely tie-broken behind fresher
+# ones - otherwise a high-quality but week-old story can permanently occupy a
+# slot on a quiet ticker. Only applied when doing so still leaves enough
+# articles to fill the requested limit, since illiquid tickers can have thin,
+# sparse news where the alternative is an empty feed.
+_MAX_ARTICLE_AGE = timedelta(days=7)
+
+
+def _article_age(article: dict) -> timedelta:
+    try:
+        published = date_parser.isoparse(article["published_at"])
+    except (ValueError, TypeError):
+        return timedelta(0)
+    now = datetime.now(published.tzinfo) if published.tzinfo else datetime.utcnow()
+    return now - published
 
 
 def get_market_news(tickers: list[str], limit: int = 8) -> list[dict]:
@@ -647,21 +693,26 @@ def get_market_news(tickers: list[str], limit: int = 8) -> list[dict]:
     Unlike get_news_headlines (titles only, for one ticker, for agent
     reasoning), this returns publisher/url/thumbnail too and merges several
     tickers into one feed. Each article is tagged with the ticker whose feed
-    it came from (dedup is by URL only, so if a story surfaces under two
-    tickers it's credited to whichever one's call happened to produce it
-    first) plus that ticker's day change, so the UI can show a "NVDA +3.03%"
-    style badge. Ranked by quality (see _article_quality_score) rather than
-    pure recency, so a caller taking a small `limit` gets the best of the
-    pool fetched rather than just whatever posted most recently - callers
-    that want "everything else" should fetch a much larger `limit` against
-    the same tickers and filter out what a "best of" call already returned.
+    it came from plus that ticker's day change, so the UI can show a "NVDA
+    +3.03%" style badge; if the same story also turned up in other tickers'
+    feeds (same title, different URL - typically a syndicated wire story),
+    those are collapsed into this one entry and listed under
+    `related_tickers` instead of appearing as separate duplicate articles.
+    Ranked by quality (see _article_quality_score) rather than pure recency,
+    so a caller taking a small `limit` gets the best of the pool fetched
+    rather than just whatever posted most recently - callers that want
+    "everything else" should fetch a much larger `limit` against the same
+    tickers and filter out what a "best of" call already returned. Articles
+    from LOW_READABILITY_PUBLISHERS are down-ranked (a real headline is still
+    worth showing) and flagged `likely_unreadable` so a "Summarize" UI can
+    skip the doomed scrape attempt.
 
     Args:
         tickers: Stock ticker symbols to pull headlines from.
         limit: Maximum number of articles to return.
     """
     seen_urls: set[str] = set()
-    articles = []
+    raw_articles = []
     fetch = lambda t: yf.Ticker(t).get_news(count=NEWS_FETCH_COUNT)
     for ticker, ticker_articles in zip(tickers, parallel_map(fetch, tickers)):
         for article in ticker_articles:
@@ -673,7 +724,7 @@ def get_market_news(tickers: list[str], limit: int = 8) -> list[dict]:
             seen_urls.add(url)
             resolutions = (content.get("thumbnail") or {}).get("resolutions") or []
             best = max(resolutions, key=lambda r: r.get("width", 0), default=None)
-            articles.append(
+            raw_articles.append(
                 {
                     "title": title,
                     "summary": content.get("summary") or None,
@@ -685,19 +736,38 @@ def get_market_news(tickers: list[str], limit: int = 8) -> list[dict]:
                     "_editors_pick": bool((content.get("metadata") or {}).get("editorsPick")),
                 }
             )
+
+    groups: dict[str, list[dict]] = {}
+    for article in raw_articles:
+        groups.setdefault(_dedupe_title_key(article["title"]), []).append(article)
+
+    articles = []
+    for group in groups.values():
+        best = max(group, key=_article_quality_score)
+        best["related_tickers"] = sorted({a["ticker"] for a in group} - {best["ticker"]})
+        articles.append(best)
+
+    fresh_articles = [a for a in articles if _article_age(a) <= _MAX_ARTICLE_AGE]
+    if len(fresh_articles) >= limit:
+        articles = fresh_articles
+
     articles.sort(key=lambda a: a["published_at"], reverse=True)
     articles.sort(key=_article_quality_score, reverse=True)
     articles = articles[:limit]
     for article in articles:
         del article["_editors_pick"]
 
-    unique_tickers = sorted({a["ticker"] for a in articles})
+    unique_tickers = sorted({a["ticker"] for a in articles} | {t for a in articles for t in a["related_tickers"]})
     day_changes = {}
     for ticker, change in zip(unique_tickers, parallel_map(_try_day_change, unique_tickers)):
         if change is not None:
             day_changes[ticker] = change
     for article in articles:
         article["ticker_day_change_percent"] = day_changes.get(article["ticker"])
+        article["related_tickers"] = [
+            {"ticker": t, "day_change_percent": day_changes.get(t)} for t in article["related_tickers"]
+        ]
+        article["likely_unreadable"] = article["publisher"] in LOW_READABILITY_PUBLISHERS
 
     return articles
 

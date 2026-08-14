@@ -1,5 +1,6 @@
 """Tests for tools.py. Mocks yf.Ticker so nothing hits the network."""
 
+from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock, patch
 
 import pandas as pd
@@ -23,6 +24,7 @@ def make_ticker(info=None, news=None, history=None):
     ticker = MagicMock()
     ticker.info = info or {}
     ticker.news = news or []
+    ticker.get_news.return_value = news or []
     ticker.history.return_value = history if history is not None else pd.DataFrame()
     return ticker
 
@@ -451,6 +453,84 @@ def test_get_market_news_skips_articles_without_title_or_url(mock_ticker_cls):
     articles = tools.get_market_news(["NVDA"])
 
     assert [a["title"] for a in articles] == ["Real headline"]
+
+
+@patch("core.tools.yf.Ticker")
+def test_get_market_news_merges_syndicated_duplicate_titles(mock_ticker_cls):
+    # Same wire story, different publisher/URL under each ticker's feed -
+    # should collapse into one entry crediting both tickers, not two
+    # separate articles.
+    def side_effect(ticker):
+        news_by_ticker = {
+            "NVDA": [make_news_article("Fed cuts rates by 25bps", "https://reuters.com/a", publisher="Reuters")],
+            "AAPL": [make_news_article("Fed Cuts Rates By 25bps!", "https://apnews.com/b", publisher="AP")],
+        }
+        return make_ticker(news=news_by_ticker[ticker])
+
+    mock_ticker_cls.side_effect = side_effect
+
+    articles = tools.get_market_news(["NVDA", "AAPL"])
+
+    assert len(articles) == 1
+    [article] = articles
+    assert article["ticker"] == "NVDA"
+    assert [r["ticker"] for r in article["related_tickers"]] == ["AAPL"]
+
+
+@patch("core.tools.yf.Ticker")
+def test_get_market_news_drops_stale_articles_when_enough_fresh_remain(mock_ticker_cls):
+    now = datetime.now(timezone.utc)
+    fresh = make_news_article(
+        "Fresh headline", "https://example.com/fresh", published_at=now.isoformat().replace("+00:00", "Z")
+    )
+    stale = make_news_article(
+        "Stale headline",
+        "https://example.com/stale",
+        published_at=(now - timedelta(days=10)).isoformat().replace("+00:00", "Z"),
+    )
+    mock_ticker_cls.return_value = make_ticker(news=[fresh, stale])
+
+    articles = tools.get_market_news(["NVDA"], limit=1)
+
+    assert [a["title"] for a in articles] == ["Fresh headline"]
+
+
+@patch("core.tools.yf.Ticker")
+def test_get_market_news_keeps_stale_articles_when_pool_too_thin(mock_ticker_cls):
+    now = datetime.now(timezone.utc)
+    stale = make_news_article(
+        "Only headline",
+        "https://example.com/only",
+        published_at=(now - timedelta(days=10)).isoformat().replace("+00:00", "Z"),
+    )
+    mock_ticker_cls.return_value = make_ticker(news=[stale])
+
+    articles = tools.get_market_news(["NVDA"], limit=8)
+
+    assert [a["title"] for a in articles] == ["Only headline"]
+
+
+@patch("core.tools.yf.Ticker")
+def test_get_market_news_down_ranks_low_readability_publishers(mock_ticker_cls):
+    unreadable = make_news_article(
+        "Unreadable headline", "https://example.com/unreadable", publisher="Motley Fool", thumbnail_url="https://x/t.jpg"
+    )
+    readable = make_news_article("Readable headline", "https://example.com/readable", publisher="Reuters")
+    mock_ticker_cls.return_value = make_ticker(news=[unreadable, readable])
+
+    articles = tools.get_market_news(["NVDA"], limit=1)
+
+    assert [a["title"] for a in articles] == ["Readable headline"]
+
+
+@patch("core.tools.yf.Ticker")
+def test_get_market_news_flags_likely_unreadable_publishers(mock_ticker_cls):
+    article = make_news_article("Headline", "https://example.com/a", publisher="TheStreet")
+    mock_ticker_cls.return_value = make_ticker(news=[article])
+
+    [result] = tools.get_market_news(["NVDA"])
+
+    assert result["likely_unreadable"] is True
 
 
 def make_quote(symbol, price=100.0, change_percent=1.5, volume=1_000_000, name=None):

@@ -36,6 +36,22 @@ class ArticleSummary(BaseModel):
     looks_paywalled: bool = Field(description="Whether the scraped text appeared to be cut off/gated")
 
 
+class PortfolioDigest(BaseModel):
+    headline: str = Field(description="Short newspaper-style headline capturing today's overall portfolio move")
+    article: str = Field(
+        description="Multi-paragraph in-depth article (plain text, paragraphs separated by a blank line, "
+        "no leading headline) analyzing how the portfolio performed today and why, grounded only in the "
+        "holdings performance and news provided"
+    )
+    key_drivers: list[str] = Field(
+        description="3-6 bullet points naming the specific holdings/news that drove today's performance"
+    )
+    watch_items: list[str] = Field(
+        description="3-5 bullet points on what to watch going forward - upcoming catalysts, unresolved "
+        "news threads, concentration or other risks"
+    )
+
+
 class TeamVerdict(BaseModel):
     ticker: str = Field(description="Stock ticker symbol, e.g. AAPL")
     verdict: Literal["buy", "hold", "sell"] = Field(

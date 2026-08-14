@@ -1,11 +1,17 @@
 import { useEffect, useMemo, useState } from 'react'
-import { getJSON } from '../api/client'
+import { getJSON, postJSON } from '../api/client'
+import NewsFeed from './NewsFeed'
+import PortfolioDigest from './PortfolioDigest'
 import { derivePositionRow } from './positionRow'
 import PortfolioTreemap from './PortfolioTreemap'
 import PositionsTable from './PositionsTable'
 import Skeleton from './Skeleton'
 import SkeletonRows from './SkeletonRows'
 import './PortfolioOverview.css'
+
+// Keeps the /news query string bounded for portfolios with many distinct
+// holdings - the backend fans this out to one yfinance call per symbol.
+const MAX_NEWS_SYMBOLS = 40
 
 const ORDER_SKELETON_WIDTHS = ['70px', '50px', '80%', '55px']
 
@@ -51,6 +57,11 @@ export default function PortfolioOverview({ portfolio, connections, updatedAt })
   const [accountId, setAccountId] = useState('all')
   const [positionsByAccount, setPositionsByAccount] = useState({})
   const [ordersByAccount, setOrdersByAccount] = useState({})
+  const [newsByAccount, setNewsByAccount] = useState({})
+  // Digest is portfolio-wide (not per-account) and, unlike every other bit
+  // of state on this page, is never fetched automatically - it's a real
+  // Bedrock call, only ever triggered by PortfolioDigest's button.
+  const [digest, setDigest] = useState(null)
 
   useEffect(() => {
     if (accounts.length === 0) return
@@ -88,6 +99,20 @@ export default function PortfolioOverview({ portfolio, connections, updatedAt })
     }, PRICE_REFRESH_INTERVAL_MS)
     return () => clearInterval(interval)
   }, [accountId])
+
+  const positionsForNews = accountId === 'all' ? portfolio?.positions : positionsByAccount[accountId]
+
+  useEffect(() => {
+    if (tab !== 'news' || newsByAccount[accountId] !== undefined || !positionsForNews) return
+    const symbols = [...new Set(positionsForNews.map((p) => p.symbol).filter(Boolean))].slice(0, MAX_NEWS_SYMBOLS)
+    if (symbols.length === 0) {
+      setNewsByAccount((prev) => ({ ...prev, [accountId]: [] }))
+      return
+    }
+    getJSON(`/news?symbols=${symbols.join(',')}`)
+      .then((data) => setNewsByAccount((prev) => ({ ...prev, [accountId]: data })))
+      .catch(() => setNewsByAccount((prev) => ({ ...prev, [accountId]: [] })))
+  }, [tab, accountId, positionsForNews, newsByAccount])
 
   if (!portfolio) {
     return (
@@ -131,6 +156,15 @@ export default function PortfolioOverview({ portfolio, connections, updatedAt })
   const orders = ordersByAccount[accountId]
   const isLoadingOrders = tab === 'orders' && !orders
 
+  async function generateDigest() {
+    setDigest('loading')
+    try {
+      setDigest(await postJSON('/brokerage/digest'))
+    } catch (err) {
+      setDigest({ error: err.message })
+    }
+  }
+
   return (
     <div className="portfolio-overview">
       <div className="portfolio-overview__hero">
@@ -170,26 +204,50 @@ export default function PortfolioOverview({ portfolio, connections, updatedAt })
         >
           Orders
         </button>
+        <button
+          type="button"
+          className={`portfolio-overview__tab ${tab === 'news' ? 'portfolio-overview__tab--active' : ''}`}
+          onClick={() => setTab('news')}
+        >
+          News
+        </button>
+        <button
+          type="button"
+          className={`portfolio-overview__tab ${tab === 'digest' ? 'portfolio-overview__tab--active' : ''}`}
+          onClick={() => setTab('digest')}
+        >
+          Daily Digest
+        </button>
       </div>
 
       <div className="portfolio-overview__view-header">
         <span className="eyebrow">
-          {tab === 'orders' ? 'Orders' : view === 'table' ? 'Holdings' : "Holdings by size, colored by today's change"}
+          {tab === 'orders'
+            ? 'Orders'
+            : tab === 'news'
+              ? 'News for your holdings'
+              : tab === 'digest'
+                ? 'Daily Digest'
+                : view === 'table'
+                  ? 'Holdings'
+                  : "Holdings by size, colored by today's change"}
         </span>
         <div className="portfolio-overview__controls">
-          <select
-            className="portfolio-overview__account-select"
-            value={accountId}
-            onChange={(event) => setAccountId(event.target.value === 'all' ? 'all' : Number(event.target.value))}
-            aria-label="Account"
-          >
-            <option value="all">All accounts</option>
-            {accounts.map((account) => (
-              <option key={account.id} value={account.id}>
-                {account.brokerageName} · {account.name ?? 'Account'}
-              </option>
-            ))}
-          </select>
+          {tab !== 'digest' && (
+            <select
+              className="portfolio-overview__account-select"
+              value={accountId}
+              onChange={(event) => setAccountId(event.target.value === 'all' ? 'all' : Number(event.target.value))}
+              aria-label="Account"
+            >
+              <option value="all">All accounts</option>
+              {accounts.map((account) => (
+                <option key={account.id} value={account.id}>
+                  {account.brokerageName} · {account.name ?? 'Account'}
+                </option>
+              ))}
+            </select>
+          )}
           {tab === 'positions' && view === 'table' && (
             <button
               type="button"
@@ -225,6 +283,15 @@ export default function PortfolioOverview({ portfolio, connections, updatedAt })
         ) : (
           <PositionsTable positions={positions} isLoading={isLoadingPositions} showAfterHours={afterHours} />
         )
+      ) : tab === 'news' ? (
+        <NewsFeed
+          articles={newsByAccount[accountId] ?? null}
+          showTicker
+          summarizable
+          emptyMessage="No recent headlines for your holdings."
+        />
+      ) : tab === 'digest' ? (
+        <PortfolioDigest digest={digest} onGenerate={generateDigest} />
       ) : isLoadingOrders ? (
         <table className="portfolio-overview__table">
           <thead>

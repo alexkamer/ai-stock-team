@@ -5,7 +5,7 @@ which holds Pydantic API request/response shapes, not database tables.
 import secrets
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import DateTime, ForeignKey, String
+from sqlalchemy import DateTime, Float, ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from core.db import Base
@@ -102,4 +102,24 @@ class AuditLogEntry(Base):
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
     event_type: Mapped[str] = mapped_column(String(64))
     detail: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(), default=_now, index=True)
+
+
+class LlmCallLog(Base):
+    """One row per LLM call whose caller has a DB session - real per-call
+    cost via genai_prices, not an estimate. user_id is nullable since some
+    future call sites may be anonymous (public/unauthenticated routes)."""
+
+    __tablename__ = "llm_call_log"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True, index=True)
+    call_site: Mapped[str] = mapped_column(String(64))
+    model: Mapped[str] = mapped_column(String(120))
+    requests: Mapped[int] = mapped_column(default=1)
+    input_tokens: Mapped[int] = mapped_column(default=0)
+    output_tokens: Mapped[int] = mapped_column(default=0)
+    cache_read_tokens: Mapped[int] = mapped_column(default=0)
+    cache_write_tokens: Mapped[int] = mapped_column(default=0)
+    cost_usd: Mapped[float] = mapped_column(Float())
     created_at: Mapped[datetime] = mapped_column(DateTime(), default=_now, index=True)
