@@ -8,6 +8,7 @@ import TickerDetail from './pages/TickerDetail'
 import StockTeam from './pages/StockTeam'
 import ResearchChat from './pages/ResearchChat'
 import StockComparison from './pages/StockComparison'
+import AdvancedCharts from './pages/AdvancedCharts'
 import Login from './pages/Login'
 import Signup from './pages/Signup'
 import Brokerage from './pages/Brokerage'
@@ -31,6 +32,7 @@ export default function App() {
               <Route path="/tickers/:ticker" element={<TickerDetail />} />
               <Route path="/tickers/:ticker/team" element={<StockTeam />} />
               <Route path="/research/stock-comparison" element={<StockComparison />} />
+              <Route path="/research/advanced-charts" element={<AdvancedCharts />} />
               <Route path="/chat" element={<ResearchChat />} />
               <Route path="/login" element={<Login />} />
               <Route path="/signup" element={<Signup />} />

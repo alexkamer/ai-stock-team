@@ -11,6 +11,7 @@ const NAV_LINKS = [
     activeMatch: '/research',
     children: [
       { to: '/research/stock-comparison', label: 'Stock comparison' },
+      { to: '/research/advanced-charts', label: 'Advanced charts' },
     ],
   },
   { to: '/chat', label: 'Chat', end: true },
