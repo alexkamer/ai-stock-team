@@ -8,9 +8,9 @@
   --text-muted: #8b8f99;
   --border: #e3e5ea;
   --border-strong: #c7cad1;
-  --signal: #5b3df0;
-  --signal-bg: rgba(91, 61, 240, 0.08);
-  --signal-border: rgba(91, 61, 240, 0.3);
+  --signal: #8f5b13;
+  --signal-bg: rgba(143, 91, 19, 0.08);
+  --signal-border: rgba(143, 91, 19, 0.3);
   --good: #147a4a;
   --good-bg: rgba(20, 122, 74, 0.08);
   --critical: #c0392b;
@@ -40,9 +40,9 @@
     --text-muted: #6e7280;
     --border: #262931;
     --border-strong: #34383f;
-    --signal: #9b85ff;
-    --signal-bg: rgba(155, 133, 255, 0.12);
-    --signal-border: rgba(155, 133, 255, 0.35);
+    --signal: #d9a44b;
+    --signal-bg: rgba(217, 164, 75, 0.12);
+    --signal-border: rgba(217, 164, 75, 0.35);
     --good: #3ecb8a;
     --good-bg: rgba(62, 203, 138, 0.1);
     --critical: #ef6e5f;
