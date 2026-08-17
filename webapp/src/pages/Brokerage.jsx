@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
+import { brokerageCache } from '../api/brokerageCache'
 import { deleteJSON, getJSON, postJSON } from '../api/client'
 import PortfolioOverview from '../components/PortfolioOverview'
 import Skeleton from '../components/Skeleton'
@@ -26,17 +27,25 @@ function BrokerageLogo({ domain, name }) {
 
 export default function Brokerage() {
   const [searchParams, setSearchParams] = useSearchParams()
-  const [connections, setConnections] = useState(null)
-  const [portfolio, setPortfolio] = useState(null)
-  const [updatedAt, setUpdatedAt] = useState(null)
+  const [connections, setConnectionsState] = useState(() => brokerageCache.connections)
+  const [portfolio, setPortfolioState] = useState(() => brokerageCache.portfolio)
+  const [updatedAt, setUpdatedAtState] = useState(() => brokerageCache.updatedAt)
   const [error, setError] = useState(null)
   const [isConnecting, setIsConnecting] = useState(false)
+
+  const setConnections = useCallback((data) => {
+    brokerageCache.connections = data
+    setConnectionsState(data)
+  }, [])
 
   const loadPortfolio = useCallback(() => {
     getJSON('/brokerage/portfolio')
       .then((data) => {
-        setPortfolio(data)
-        setUpdatedAt(new Date())
+        const now = new Date()
+        brokerageCache.portfolio = data
+        brokerageCache.updatedAt = now
+        setPortfolioState(data)
+        setUpdatedAtState(now)
       })
       .catch((err) => setError(err.message))
   }, [])
@@ -45,7 +54,7 @@ export default function Brokerage() {
     getJSON('/brokerage/connections')
       .then(setConnections)
       .catch((err) => setError(err.message))
-  }, [])
+  }, [setConnections])
 
   useEffect(() => {
     if (searchParams.get('connected')) {
@@ -61,7 +70,7 @@ export default function Brokerage() {
       loadConnections()
       loadPortfolio()
     }
-  }, [searchParams, setSearchParams, loadConnections, loadPortfolio])
+  }, [searchParams, setSearchParams, loadConnections, loadPortfolio, setConnections])
 
   useEffect(() => {
     const interval = setInterval(() => {

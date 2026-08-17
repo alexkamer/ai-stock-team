@@ -36,6 +36,44 @@ brokerage page needs a `SNAPTRADE_CLIENT_ID`/`SNAPTRADE_CONSUMER_KEY` pair
 from your [SnapTrade dashboard](https://snaptrade.com/) — everything else in
 the app works without it.
 
+### Configuring the AI model
+
+All agents (CLI, chat, stock team, Daily Digest) run on Claude via AWS
+Bedrock, built centrally by `src/core/config.py` from `src/core/config.yaml`
+— there's no separate key/model config per agent.
+
+1. **AI keys** — get AWS credentials with Bedrock access (and access to
+   whichever model you pick, granted per-region in the Bedrock console).
+   Either export them in your shell:
+   ```
+   AWS_ACCESS_KEY_ID=
+   AWS_SECRET_ACCESS_KEY=
+   AWS_SESSION_TOKEN=
+   ```
+   or put them in `.env` — `core/env.py` loads it before anything reads
+   `os.environ`, and `load_dotenv()` never overrides a variable already set
+   in your real shell, so this is safe to add alongside existing AWS
+   SSO/shared-credentials-file setups. If you're already logged in via
+   `aws sso login` or similar, you can skip this — the app will pick up
+   your ambient credentials.
+2. **Model/region** — edit the `model:` and `provider:` sections of
+   `src/core/config.yaml`:
+   ```yaml
+   provider:
+     region_name: us-east-2   # must be a region where you have Bedrock access
+
+   model:
+     name: global.anthropic.claude-sonnet-5   # any Bedrock-hosted model ID
+   ```
+3. **Generation behavior** (optional) — `model_settings:` in the same file
+   controls things like `max_tokens`, `temperature`, and `timeout`; see the
+   comments in `config.yaml` for what each does and why a couple are
+   commented out by default (e.g. `temperature` is rejected by
+   `claude-sonnet-5` on Bedrock).
+
+No code changes or restarts of anything but the backend are needed to swap
+models — just edit `config.yaml` and restart `make backend`.
+
 ### Connecting SnapTrade
 
 1. Sign up for a [SnapTrade](https://snaptrade.com/) developer account and

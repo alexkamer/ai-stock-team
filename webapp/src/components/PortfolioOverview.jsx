@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { brokerageCache } from '../api/brokerageCache'
 import { getJSON, postJSON } from '../api/client'
 import NewsFeed from './NewsFeed'
 import PortfolioDigest from './PortfolioDigest'
@@ -55,9 +56,33 @@ export default function PortfolioOverview({ portfolio, connections, updatedAt })
   const [view, setView] = useState('table')
   const [afterHours, setAfterHours] = useState(false)
   const [accountId, setAccountId] = useState('all')
-  const [positionsByAccount, setPositionsByAccount] = useState({})
-  const [ordersByAccount, setOrdersByAccount] = useState({})
-  const [newsByAccount, setNewsByAccount] = useState({})
+  const [positionsByAccount, setPositionsByAccountState] = useState(() => brokerageCache.positionsByAccount)
+  const [ordersByAccount, setOrdersByAccountState] = useState(() => brokerageCache.ordersByAccount)
+  const [newsByAccount, setNewsByAccountState] = useState(() => brokerageCache.newsByAccount)
+
+  const setPositionsByAccount = useCallback((updater) => {
+    setPositionsByAccountState((prev) => {
+      const next = typeof updater === 'function' ? updater(prev) : updater
+      brokerageCache.positionsByAccount = next
+      return next
+    })
+  }, [])
+
+  const setOrdersByAccount = useCallback((updater) => {
+    setOrdersByAccountState((prev) => {
+      const next = typeof updater === 'function' ? updater(prev) : updater
+      brokerageCache.ordersByAccount = next
+      return next
+    })
+  }, [])
+
+  const setNewsByAccount = useCallback((updater) => {
+    setNewsByAccountState((prev) => {
+      const next = typeof updater === 'function' ? updater(prev) : updater
+      brokerageCache.newsByAccount = next
+      return next
+    })
+  }, [])
   // Digest is portfolio-wide (not per-account) and, unlike every other bit
   // of state on this page, is never fetched automatically - it's a real
   // Bedrock call, only ever triggered by PortfolioDigest's button.
@@ -74,20 +99,21 @@ export default function PortfolioOverview({ portfolio, connections, updatedAt })
     const cancelIdle = window.cancelIdleCallback ?? clearTimeout
 
     const handle = requestIdle(() => {
-      getJSON('/brokerage/orders').then((orders) =>
-        setOrdersByAccount((prev) => (prev.all ? prev : { ...prev, all: orders }))
-      )
+      // Always refetches, even if a prior mount already cached this account -
+      // that's what keeps stale-while-revalidate stale-free: the cache paints
+      // instantly, then this quietly replaces it with current data.
+      getJSON('/brokerage/orders').then((orders) => setOrdersByAccount((prev) => ({ ...prev, all: orders })))
       accounts.forEach((account) => {
         getJSON(`/brokerage/accounts/${account.id}/positions`).then((positions) =>
-          setPositionsByAccount((prev) => (prev[account.id] ? prev : { ...prev, [account.id]: positions }))
+          setPositionsByAccount((prev) => ({ ...prev, [account.id]: positions }))
         )
         getJSON(`/brokerage/accounts/${account.id}/transactions`).then((orders) =>
-          setOrdersByAccount((prev) => (prev[account.id] ? prev : { ...prev, [account.id]: orders }))
+          setOrdersByAccount((prev) => ({ ...prev, [account.id]: orders }))
         )
       })
     })
     return () => cancelIdle(handle)
-  }, [accounts])
+  }, [accounts, setOrdersByAccount, setPositionsByAccount])
 
   useEffect(() => {
     if (accountId === 'all') return
@@ -98,7 +124,7 @@ export default function PortfolioOverview({ portfolio, connections, updatedAt })
       )
     }, PRICE_REFRESH_INTERVAL_MS)
     return () => clearInterval(interval)
-  }, [accountId])
+  }, [accountId, setPositionsByAccount])
 
   const positionsForNews = accountId === 'all' ? portfolio?.positions : positionsByAccount[accountId]
 
@@ -112,7 +138,7 @@ export default function PortfolioOverview({ portfolio, connections, updatedAt })
     getJSON(`/news?symbols=${symbols.join(',')}`)
       .then((data) => setNewsByAccount((prev) => ({ ...prev, [accountId]: data })))
       .catch(() => setNewsByAccount((prev) => ({ ...prev, [accountId]: [] })))
-  }, [tab, accountId, positionsForNews, newsByAccount])
+  }, [tab, accountId, positionsForNews, newsByAccount, setNewsByAccount])
 
   if (!portfolio) {
     return (
