@@ -4,6 +4,35 @@
   gap: 16px;
 }
 
+.ticker-detail__tabs {
+  display: flex;
+  gap: 1.25rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.ticker-detail__tab {
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  padding: 0 0 0.5rem;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.ticker-detail__tab:hover {
+  color: var(--text-secondary);
+}
+
+.ticker-detail__tab--active {
+  color: var(--text-primary);
+  font-weight: 600;
+  border-bottom-color: var(--signal);
+}
+
 .ticker-detail__hero {
   position: relative;
   display: flex;

@@ -1,69 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
-import { useParams } from 'react-router-dom'
-import { getJSON, streamSSE } from '../api/client'
+import { NavLink, Outlet, useParams } from 'react-router-dom'
+import { streamSSE } from '../api/client'
 import { useToolCalls } from '../components/useToolCalls'
-import ToolCallPill from '../components/ToolCallPill'
-import { Link } from 'react-router-dom'
-import PriceChart from '../components/PriceChart'
-import NewsFeed from '../components/NewsFeed'
-import Sparkline from '../components/Sparkline'
 import './TickerDetail.css'
-
-const SENTIMENT_LABEL = { bullish: 'Bullish', bearish: 'Bearish', neutral: 'Neutral' }
-
-const CHART_PREFS_KEY = 'ticker-chart-prefs'
-
-function loadChartPrefs() {
-  try {
-    const raw = localStorage.getItem(CHART_PREFS_KEY)
-    return raw ? JSON.parse(raw) : {}
-  } catch {
-    return {}
-  }
-}
-
-function saveChartPrefs(prefs) {
-  try {
-    localStorage.setItem(CHART_PREFS_KEY, JSON.stringify(prefs))
-  } catch {
-    // localStorage unavailable (private browsing, quota) - preference just won't persist
-  }
-}
-
-function SimilarTickers({ tickers }) {
-  return (
-    <div className="card ticker-detail__similar">
-      <span className="eyebrow">Similar tickers</span>
-      {tickers === null
-        ? Array.from({ length: 5 }, (_, i) => <div key={i} className="similar-row similar-row--loading" />)
-        : tickers.length === 0
-        ? <div className="similar-row similar-row--empty">No comparable tickers found.</div>
-        : tickers.map((t) => {
-            const positive = t.day_change_percent >= 0
-            return (
-              <Link key={t.ticker} to={`/tickers/${t.ticker}`} className="similar-row">
-                <span className="similar-row__name">
-                  <span className="similar-row__ticker">{t.ticker}</span>
-                  <span className="similar-row__company">{t.company_name}</span>
-                </span>
-                <Sparkline values={t.day_prices} width={56} height={24} positive={positive} />
-                <span className="similar-row__price-block">
-                  <span className="similar-row__price num">{t.price.toFixed(2)}</span>
-                  <span className={`change-badge ${positive ? 'change-badge--good' : 'change-badge--bad'}`}>
-                    {positive ? '+' : ''}{t.day_change_percent.toFixed(2)}%
-                  </span>
-                </span>
-              </Link>
-            )
-          })}
-    </div>
-  )
-}
-
-function SentimentBadge({ sentiment }) {
-  if (!sentiment) return null
-  return <span className={`sentiment-badge sentiment-badge--${sentiment}`}>{SENTIMENT_LABEL[sentiment]}</span>
-}
 
 function CompanyLogo({ domain, ticker }) {
   const [failed, setFailed] = useState(false)
@@ -84,47 +23,12 @@ function formatUpdatedAt(date) {
   return date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', second: '2-digit' })
 }
 
-function formatCompact(n) {
-  if (n == null) return '—'
-  if (n >= 1e12) return `${(n / 1e12).toFixed(2)}T`
-  if (n >= 1e9) return `${(n / 1e9).toFixed(1)}B`
-  if (n >= 1e6) return `${(n / 1e6).toFixed(1)}M`
-  if (n >= 1e3) return `${(n / 1e3).toFixed(1)}K`
-  return `${n}`
-}
-
-function RangeBar({ low, high, value, valueLabel = 'Current price', secondaryValue, secondaryLabel }) {
-  if (low == null || high == null || value == null || high <= low) return null
-  const toPct = (v) => Math.max(0, Math.min(100, ((v - low) / (high - low)) * 100))
-  return (
-    <div className="range-bar">
-      <div className="range-bar__track">
-        <div className="range-bar__marker" style={{ left: `${toPct(value)}%` }} title={valueLabel} />
-        {secondaryValue != null && (
-          <div
-            className="range-bar__marker range-bar__marker--secondary"
-            style={{ left: `${toPct(secondaryValue)}%` }}
-            title={secondaryLabel}
-          />
-        )}
-      </div>
-      {secondaryValue != null && (
-        <div className="range-bar__legend">
-          <span className="range-bar__legend-item">
-            <span className="range-bar__legend-swatch range-bar__legend-swatch--primary" /> {valueLabel}
-          </span>
-          <span className="range-bar__legend-item">
-            <span className="range-bar__legend-swatch range-bar__legend-swatch--secondary" /> {secondaryLabel}
-          </span>
-        </div>
-      )}
-      <div className="range-bar__labels">
-        <span className="num">{low.toFixed(2)}</span>
-        <span className="num">{high.toFixed(2)}</span>
-      </div>
-    </div>
-  )
-}
+const TABS = [
+  { to: '', label: 'Overview', end: true },
+  { to: 'charts', label: 'Charts' },
+  { to: 'news', label: 'News' },
+  { to: 'team', label: 'Team Analysis' },
+]
 
 export default function TickerDetail() {
   const { ticker } = useParams()
@@ -132,20 +36,6 @@ export default function TickerDetail() {
   const [sentiment, setSentiment] = useState(null)
   const [summary, setSummary] = useState('')
   const [error, setError] = useState(null)
-  const [chartPrefs] = useState(loadChartPrefs)
-  const [period, setPeriod] = useState(chartPrefs.period ?? '1mo')
-  const [prices, setPrices] = useState(null)
-  const [labels, setLabels] = useState(null)
-  const [volumes, setVolumes] = useState(null)
-  const [highs, setHighs] = useState(null)
-  const [lows, setLows] = useState(null)
-  const [opens, setOpens] = useState(null)
-  const [isRegularHours, setIsRegularHours] = useState(null)
-  const [benchmarkPrices, setBenchmarkPrices] = useState(null)
-  const [compareBenchmark, setCompareBenchmark] = useState(chartPrefs.compareBenchmark ?? false)
-  const [chartType, setChartType] = useState(chartPrefs.chartType ?? 'line')
-  const [extendedHours, setExtendedHours] = useState(chartPrefs.extendedHours ?? false)
-  const [chartLoading, setChartLoading] = useState(false)
   const [updatedAt, setUpdatedAt] = useState(null)
   const { calls, handleEvent, reset } = useToolCalls()
   const controllerRef = useRef(null)
@@ -183,46 +73,6 @@ export default function TickerDetail() {
     return () => controller.abort()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ticker])
-
-  useEffect(() => {
-    setPrices(null)
-    setLabels(null)
-    setVolumes(null)
-    setHighs(null)
-    setLows(null)
-    setOpens(null)
-    setIsRegularHours(null)
-    setBenchmarkPrices(null)
-  }, [ticker])
-
-  useEffect(() => {
-    let cancelled = false
-    setChartLoading(true)
-    const benchmarkParam = compareBenchmark ? '&benchmark=SPY' : ''
-    getJSON(`/tickers/${ticker}/history?period=${period}${benchmarkParam}`)
-      .then((data) => {
-        if (cancelled) return
-        setPrices(data.prices)
-        setLabels(data.labels)
-        setVolumes(data.volumes ?? null)
-        setHighs(data.highs ?? null)
-        setLows(data.lows ?? null)
-        setOpens(data.opens ?? null)
-        setIsRegularHours(data.is_regular_hours ?? null)
-        setBenchmarkPrices(data.benchmark_prices ?? null)
-      })
-      .catch(() => {})
-      .finally(() => {
-        if (!cancelled) setChartLoading(false)
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [ticker, period, compareBenchmark])
-
-  useEffect(() => {
-    saveChartPrefs({ period, compareBenchmark, chartType, extendedHours })
-  }, [period, compareBenchmark, chartType, extendedHours])
 
   if (error) return <div className="error-banner">{error}</div>
 
@@ -273,152 +123,20 @@ export default function TickerDetail() {
         </div>
       </div>
 
-      <div className="ticker-detail__columns">
-        <div className="ticker-detail__main">
-          <div className="ticker-detail__stats">
-            <div className="card ticker-detail__stat">
-              <span className="ticker-detail__stat-label">Market cap</span>
-              <span className="ticker-detail__stat-value num">
-                {quote ? `$${formatCompact(quote.market_cap)}` : '—'}
-              </span>
-            </div>
-            <div className="card ticker-detail__stat">
-              <span className="ticker-detail__stat-label">P/E ratio</span>
-              <span className="ticker-detail__stat-value num">
-                {quote ? quote.pe_ratio.toFixed(1) : '—'}
-                {quote?.forward_pe && <span className="ticker-detail__stat-sub"> / fwd {quote.forward_pe.toFixed(1)}</span>}
-              </span>
-            </div>
-            <div className="card ticker-detail__stat">
-              <span className="ticker-detail__stat-label">Volume</span>
-              <span className="ticker-detail__stat-value num">
-                {quote ? formatCompact(quote.volume) : '—'}
-                {quote?.avg_volume_3m && (
-                  <span className="ticker-detail__stat-sub"> / avg {formatCompact(quote.avg_volume_3m)}</span>
-                )}
-              </span>
-            </div>
-            <div className="card ticker-detail__stat">
-              <span className="ticker-detail__stat-label">Dividend yield</span>
-              <span className="ticker-detail__stat-value num">
-                {quote?.dividend_yield ? `${quote.dividend_yield.toFixed(2)}%` : '—'}
-              </span>
-            </div>
-            <div className="card ticker-detail__stat ticker-detail__stat--wide">
-              <span className="ticker-detail__stat-label">52-week range</span>
-              {quote ? (
-                <RangeBar low={quote.fifty_two_week_low} high={quote.fifty_two_week_high} value={quote.price} />
-              ) : (
-                <span className="ticker-detail__stat-value num">—</span>
-              )}
-            </div>
-            <div className="card ticker-detail__stat">
-              <span className="ticker-detail__stat-label">52-week change</span>
-              <span
-                className={`ticker-detail__stat-value num ${
-                  quote?.fifty_two_week_change_percent != null
-                    ? quote.fifty_two_week_change_percent >= 0
-                      ? 'ticker-detail__stat-value--good'
-                      : 'ticker-detail__stat-value--bad'
-                    : ''
-                }`}
-              >
-                {quote?.fifty_two_week_change_percent != null
-                  ? `${quote.fifty_two_week_change_percent >= 0 ? '+' : ''}${quote.fifty_two_week_change_percent.toFixed(1)}%`
-                  : '—'}
-              </span>
-            </div>
-            <div className="card ticker-detail__stat">
-              <span className="ticker-detail__stat-label">Beta</span>
-              <span className="ticker-detail__stat-value num">{quote?.beta != null ? quote.beta.toFixed(2) : '—'}</span>
-            </div>
-            <div className="card ticker-detail__stat">
-              <span
-                className="ticker-detail__stat-label"
-                title="Average of analysts' 1 (Strong Buy) to 5 (Strong Sell) ratings"
-              >
-                Analyst rating
-              </span>
-              <span className="ticker-detail__stat-value">{quote?.analyst_rating ?? '—'}</span>
-              <span className="ticker-detail__stat-caption">1 = Strong Buy · 5 = Strong Sell</span>
-            </div>
-            <div className="card ticker-detail__stat ticker-detail__stat--wide">
-              <span className="ticker-detail__stat-label">
-                Analyst price target
-                {quote?.analyst_count ? ` (${quote.analyst_count} analysts)` : ''}
-              </span>
-              {quote?.analyst_target_low != null && quote?.analyst_target_high != null ? (
-                <RangeBar
-                  low={quote.analyst_target_low}
-                  high={quote.analyst_target_high}
-                  value={quote.price}
-                  secondaryValue={quote.analyst_target_price}
-                  secondaryLabel={`Mean target ${quote.analyst_target_price?.toFixed(0)}`}
-                />
-              ) : (
-                <span className="ticker-detail__stat-value num">—</span>
-              )}
-            </div>
-          </div>
-
-          <div className={`card ticker-detail__summary ticker-detail__summary--${sentiment?.sentiment ?? 'pending'}`}>
-            <div className="ticker-detail__summary-head">
-              <span className="eyebrow">AI sentiment read</span>
-              <SentimentBadge sentiment={sentiment?.sentiment} />
-            </div>
-            {calls.length > 0 && (
-              <div className="ticker-detail__pills">
-                {calls.map((c, i) => (
-                  <ToolCallPill key={i} toolName={c.toolName} done={c.done} />
-                ))}
-              </div>
-            )}
-            <p>{sentiment?.summary ?? (summary || (quote ? 'Reading recent headlines…' : ''))}</p>
-          </div>
-
-          <div className="card">
-            <div className="ticker-detail__chart-card-head">
-              <Link to={`/research/advanced-charts?symbol=${ticker}`} className="ticker-detail__advanced-chart-link">
-                Open in Advanced Charts →
-              </Link>
-            </div>
-            <PriceChart
-              ticker={ticker}
-              prices={prices}
-              labels={labels}
-              volumes={volumes}
-              opens={opens}
-              highs={highs}
-              lows={lows}
-              period={period}
-              onPeriodChange={setPeriod}
-              positive={positive}
-              previousClose={previousClose}
-              loading={chartLoading}
-              isRegularHours={isRegularHours}
-              benchmarkPrices={benchmarkPrices}
-              benchmarkLabel="S&P 500"
-              compareEnabled={compareBenchmark}
-              onToggleCompare={() => setCompareBenchmark((v) => !v)}
-              chartType={chartType}
-              onChartTypeChange={setChartType}
-              extendedHours={extendedHours}
-              onToggleExtendedHours={() => setExtendedHours((v) => !v)}
-            />
-          </div>
-
-          {(quote === null || quote?.news_headlines) && (
-            <div className="ticker-detail__news">
-              <span className="eyebrow">Recent news</span>
-              <NewsFeed articles={quote?.news ?? null} showTicker={false} summarizable />
-            </div>
-          )}
-        </div>
-
-        <div className="ticker-detail__side">
-          <SimilarTickers tickers={quote?.similar_tickers ?? (quote === null ? null : [])} />
-        </div>
+      <div className="ticker-detail__tabs">
+        {TABS.map((tab) => (
+          <NavLink
+            key={tab.label}
+            to={tab.to}
+            end={tab.end}
+            className={({ isActive }) => `ticker-detail__tab${isActive ? ' ticker-detail__tab--active' : ''}`}
+          >
+            {tab.label}
+          </NavLink>
+        ))}
       </div>
+
+      <Outlet context={{ ticker, quote, sentiment, summary, calls, positive, previousClose }} />
     </div>
   )
 }

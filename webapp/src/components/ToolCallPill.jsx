@@ -12,6 +12,10 @@ const TOOL_LABELS = {
   get_watchlist_prices: 'Checking watchlist',
   get_fundamentals: 'Consulting fundamentals specialist',
   get_sentiment: 'Consulting sentiment specialist',
+  get_technicals: 'Consulting technicals specialist',
+  get_valuation: 'Consulting valuation specialist',
+  get_risk: 'Consulting risk/macro specialist',
+  get_portfolio_fit: 'Consulting portfolio fit specialist',
 }
 
 function labelFor(toolName) {

@@ -1,17 +1,45 @@
 """Tests for api.py. Mocks yf.Ticker so nothing hits the network."""
 
 import json
+from contextlib import ExitStack
+from datetime import date, timedelta
 from unittest.mock import MagicMock, patch
 
 import pandas as pd
 import pytest
 from fastapi.testclient import TestClient
 from pydantic_ai.models.test import TestModel
+from sqlalchemy import create_engine, select
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
 
 from agents import chat, main, stock_team
 from core import api, tools
+from core.db import Base, get_db
+from core.models_db import TeamVerdictRecord
 
 client = TestClient(api.app)
+
+
+@pytest.fixture(autouse=True)
+def isolated_db():
+    """Team-analysis logging and /track-record touch the DB - route them to
+    an in-memory SQLite instance instead of the real local dev DB, same
+    approach as test_brokerage.py's isolated_db."""
+    engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
+    Base.metadata.create_all(bind=engine)
+    TestingSessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
+
+    def override_get_db():
+        db = TestingSessionLocal()
+        try:
+            yield db
+        finally:
+            db.close()
+
+    api.app.dependency_overrides[get_db] = override_get_db
+    yield TestingSessionLocal
+    api.app.dependency_overrides.pop(get_db, None)
 
 
 def parse_sse(response) -> list[tuple[str, dict]]:
@@ -314,18 +342,41 @@ def test_get_ticker_snapshot_streams_error_for_unknown_ticker(mock_ticker_cls):
 @patch("core.tools.yf.Ticker")
 def test_get_ticker_team_analysis_streams_tool_events_and_verdict(mock_ticker_cls):
     mock_ticker_cls.return_value = make_ticker(
-        info=full_info(), news=[{"content": {"title": "Nvidia beats estimates"}}]
+        info=full_info(beta=1.05, sector="Technology", industry="Semiconductors", hasPrePostMarketData=False),
+        news=[{"content": {"title": "Nvidia beats estimates"}}],
+        history=pd.DataFrame(
+            {"Close": [100.0, 132.45], "High": [105.0, 133.0], "Low": [98.0, 128.0]},
+            index=pd.to_datetime(["2024-01-01", "2025-01-01"]),
+        ),
     )
     synthesizer_model = TestModel(
-        custom_output_args={"ticker": "NVDA", "verdict": "buy", "reasoning": "Strong fundamentals."}
+        custom_output_args={
+            "ticker": "NVDA",
+            "verdict": "buy",
+            "key_factors": ["Fundamentals: strong."],
+            "reasoning": "Strong fundamentals.",
+            "predicted_price": 145.0,
+            "predicted_horizon": "1mo",
+        }
     )
-    fundamentals_model = TestModel(custom_output_text="Fundamentals summary.")
-    sentiment_model = TestModel(custom_output_text="Sentiment summary.")
+    finding_args = {
+        "signal": "positive",
+        "headline": "Looks solid on this dimension.",
+        "key_points": ["Concrete figure one.", "Concrete figure two."],
+    }
+    fundamentals_model = TestModel(custom_output_args=finding_args)
+    sentiment_model = TestModel(custom_output_args=finding_args)
+    technicals_model = TestModel(custom_output_args=finding_args)
+    valuation_model = TestModel(custom_output_args=finding_args)
+    risk_model = TestModel(custom_output_args=finding_args)
 
     with (
         stock_team.synthesizer.override(model=synthesizer_model),
         stock_team.fundamentals_agent.override(model=fundamentals_model),
         stock_team.sentiment_agent.override(model=sentiment_model),
+        stock_team.technicals_agent.override(model=technicals_model),
+        stock_team.valuation_agent.override(model=valuation_model),
+        stock_team.risk_agent.override(model=risk_model),
     ):
         response = client.get("/tickers/nvda/team")
 
@@ -339,26 +390,155 @@ def test_get_ticker_team_analysis_streams_tool_events_and_verdict(mock_ticker_cl
     assert event_names[-1] == "verdict"
 
     verdict = events[-1][1]
-    assert verdict == {"ticker": "NVDA", "verdict": "buy", "reasoning": "Strong fundamentals."}
+    assert verdict == {
+        "ticker": "NVDA",
+        "verdict": "buy",
+        "key_factors": ["Fundamentals: strong."],
+        "reasoning": "Strong fundamentals.",
+        "predicted_price": 145.0,
+        "predicted_horizon": "1mo",
+        "is_held": None,
+    }
 
 
 @patch("core.tools.yf.Ticker")
 def test_get_ticker_team_analysis_streams_error_for_unknown_ticker(mock_ticker_cls):
     mock_ticker_cls.return_value = make_ticker(info={}, news=[])
-    synthesizer_model = TestModel(custom_output_args={"ticker": "BAD", "verdict": "hold", "reasoning": "n/a"})
-    fundamentals_model = TestModel(custom_output_text="x")
-    sentiment_model = TestModel(custom_output_text="x")
+    synthesizer_model = TestModel(
+        custom_output_args={"ticker": "BAD", "verdict": "hold", "key_factors": ["n/a"], "reasoning": "n/a"}
+    )
+    finding_args = {"signal": "neutral", "headline": "x", "key_points": ["x"]}
+    fundamentals_model = TestModel(custom_output_args=finding_args)
+    sentiment_model = TestModel(custom_output_args=finding_args)
+    technicals_model = TestModel(custom_output_args=finding_args)
+    valuation_model = TestModel(custom_output_args=finding_args)
+    risk_model = TestModel(custom_output_args=finding_args)
 
     with (
         stock_team.synthesizer.override(model=synthesizer_model),
         stock_team.fundamentals_agent.override(model=fundamentals_model),
         stock_team.sentiment_agent.override(model=sentiment_model),
+        stock_team.technicals_agent.override(model=technicals_model),
+        stock_team.valuation_agent.override(model=valuation_model),
+        stock_team.risk_agent.override(model=risk_model),
     ):
         response = client.get("/tickers/badticker/team")
 
     events = parse_sse(response)
     assert events[-1][0] == "error"
     assert "No" in events[-1][1]["detail"]
+
+
+def _team_analysis_overrides():
+    """The five specialist model overrides + the shared context manager
+    every team-analysis test needs - factored out since the logging tests
+    below don't care about the analysis content itself."""
+    synthesizer_model = TestModel(
+        custom_output_args={
+            "ticker": "NVDA",
+            "verdict": "buy",
+            "key_factors": ["Fundamentals: strong."],
+            "reasoning": "Strong fundamentals.",
+            "predicted_price": 145.0,
+            "predicted_horizon": "1mo",
+        }
+    )
+    finding_args = {
+        "signal": "positive",
+        "headline": "Looks solid on this dimension.",
+        "key_points": ["Concrete figure one.", "Concrete figure two."],
+    }
+    return [
+        stock_team.synthesizer.override(model=synthesizer_model),
+        stock_team.fundamentals_agent.override(model=TestModel(custom_output_args=finding_args)),
+        stock_team.sentiment_agent.override(model=TestModel(custom_output_args=finding_args)),
+        stock_team.technicals_agent.override(model=TestModel(custom_output_args=finding_args)),
+        stock_team.valuation_agent.override(model=TestModel(custom_output_args=finding_args)),
+        stock_team.risk_agent.override(model=TestModel(custom_output_args=finding_args)),
+    ]
+
+
+@patch("core.tools.yf.Ticker")
+def test_get_ticker_team_analysis_logs_a_verdict_row(mock_ticker_cls, isolated_db):
+    mock_ticker_cls.return_value = make_ticker(
+        info=full_info(),
+        news=[{"content": {"title": "Nvidia beats estimates"}}],
+        history=pd.DataFrame({"Close": [100.0, 132.45]}, index=pd.to_datetime(["2024-01-01", "2025-01-01"])),
+    )
+
+    with ExitStack() as stack:
+        for ctx in _team_analysis_overrides():
+            stack.enter_context(ctx)
+        client.get("/tickers/nvda/team")
+
+    session = isolated_db()
+    rows = session.execute(select(TeamVerdictRecord)).scalars().all()
+    session.close()
+    assert len(rows) == 1
+    assert rows[0].ticker == "NVDA"
+    assert rows[0].verdict == "buy"
+    assert rows[0].price_at_call == full_info()["currentPrice"]
+    assert rows[0].predicted_price == 145.0
+    assert rows[0].predicted_horizon == "1mo"
+
+
+@patch("core.tools.yf.Ticker")
+def test_get_ticker_team_analysis_does_not_log_twice_same_day(mock_ticker_cls, isolated_db):
+    mock_ticker_cls.return_value = make_ticker(
+        info=full_info(),
+        news=[{"content": {"title": "Nvidia beats estimates"}}],
+        history=pd.DataFrame({"Close": [100.0, 132.45]}, index=pd.to_datetime(["2024-01-01", "2025-01-01"])),
+    )
+
+    for _ in range(2):
+        with ExitStack() as stack:
+            for ctx in _team_analysis_overrides():
+                stack.enter_context(ctx)
+            client.get("/tickers/nvda/team")
+
+    session = isolated_db()
+    rows = session.execute(select(TeamVerdictRecord)).scalars().all()
+    session.close()
+    assert len(rows) == 1
+
+
+@patch("core.track_record.yf.Ticker")
+def test_get_track_record_returns_scored_records_and_stats(mock_ticker_cls, isolated_db):
+    session = isolated_db()
+    session.add(
+        TeamVerdictRecord(
+            user_id=1,
+            ticker="NVDA",
+            verdict="buy",
+            key_factors=json.dumps(["Fundamentals: strong."]),
+            reasoning="Strong fundamentals.",
+            price_at_call=200.0,
+            call_date=date.today() - timedelta(days=10),
+        )
+    )
+    session.commit()
+    session.close()
+
+    dates = pd.bdate_range(date.today() - timedelta(days=10), periods=20)
+
+    def ticker_side_effect(symbol):
+        base = 100.0 if symbol == "SPY" else 200.0
+        rate = 0.0005 if symbol == "SPY" else 0.005
+        closes = [base * (1 + rate) ** i for i in range(20)]
+        mock_ticker = MagicMock()
+        mock_ticker.history.return_value = pd.DataFrame({"Close": closes}, index=dates)
+        return mock_ticker
+
+    mock_ticker_cls.side_effect = ticker_side_effect
+
+    response = client.get("/track-record")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert len(body["records"]) == 1
+    assert body["records"][0]["ticker"] == "NVDA"
+    assert body["records"][0]["current"]["hit"] is True
+    assert body["stats"]["total_calls"] == 1
 
 
 @pytest.fixture(autouse=True)

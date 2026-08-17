@@ -8,6 +8,7 @@ from datetime import datetime, time, timedelta
 from time import monotonic
 from typing import TypeVar
 
+import pandas as pd
 import requests
 import yfinance as yf
 from bs4 import BeautifulSoup
@@ -301,6 +302,72 @@ def get_price_performance(ticker: str) -> dict:
         start_price = float(closes.iloc[pos])
         result[key] = (latest_price - start_price) / start_price * 100
     return result
+
+
+def _clean_float(value) -> float | None:
+    """NaN (insufficient history for a given window) -> None, so callers get
+    JSON-serializable output instead of a `NaN` token."""
+    if value is None or pd.isna(value):
+        return None
+    return float(value)
+
+
+def get_technical_indicators(ticker: str) -> dict:
+    """Compute real technical indicators from daily closing prices over the
+    trailing year, for the stock team's technicals/risk specialists - grounds
+    them in actual computed signals instead of having the model eyeball raw
+    price numbers.
+
+    Args:
+        ticker: Stock ticker symbol, e.g. 'NVDA'.
+    """
+    history = yf.Ticker(ticker).history(period="1y")
+    if history.empty:
+        raise ValueError(f"No price history found for ticker {ticker!r}")
+
+    closes = history["Close"]
+    price = float(closes.iloc[-1])
+
+    sma = {window: _clean_float(closes.rolling(window).mean().iloc[-1]) for window in (20, 50, 200)}
+
+    # RSI (14-day, Wilder's smoothing via an equivalent EWM alpha).
+    delta = closes.diff()
+    avg_gain = _clean_float(delta.clip(lower=0).ewm(alpha=1 / 14, min_periods=14, adjust=False).mean().iloc[-1])
+    avg_loss = _clean_float((-delta.clip(upper=0)).ewm(alpha=1 / 14, min_periods=14, adjust=False).mean().iloc[-1])
+    if avg_gain is None or avg_loss is None:
+        rsi_14 = None
+    elif avg_loss == 0:
+        rsi_14 = 100.0 if avg_gain > 0 else 50.0
+    else:
+        rsi_14 = 100 - (100 / (1 + avg_gain / avg_loss))
+
+    # MACD (12/26 EMA line, 9-period signal line).
+    macd_line = closes.ewm(span=12, adjust=False).mean() - closes.ewm(span=26, adjust=False).mean()
+    macd_signal_line = macd_line.ewm(span=9, adjust=False).mean()
+    macd = _clean_float(macd_line.iloc[-1])
+    macd_signal = _clean_float(macd_signal_line.iloc[-1])
+
+    # 30-day realized volatility, annualized (252 trading days).
+    trailing_returns = closes.pct_change().dropna().tail(30)
+    volatility_30d_annualized_percent = (
+        _clean_float(trailing_returns.std() * (252**0.5) * 100) if len(trailing_returns) >= 2 else None
+    )
+
+    return {
+        "price": price,
+        "sma_20": sma[20],
+        "sma_50": sma[50],
+        "sma_200": sma[200],
+        "above_sma_20": price > sma[20] if sma[20] is not None else None,
+        "above_sma_50": price > sma[50] if sma[50] is not None else None,
+        "above_sma_200": price > sma[200] if sma[200] is not None else None,
+        "golden_cross": sma[50] > sma[200] if sma[50] is not None and sma[200] is not None else None,
+        "rsi_14": rsi_14,
+        "macd": macd,
+        "macd_signal": macd_signal,
+        "macd_bullish_crossover": macd > macd_signal if macd is not None and macd_signal is not None else None,
+        "volatility_30d_annualized_percent": volatility_30d_annualized_percent,
+    }
 
 
 def get_sparkline_prices(ticker: str, period: str = "1mo") -> list[float]:

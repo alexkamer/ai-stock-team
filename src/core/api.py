@@ -9,7 +9,7 @@ blocking on the full agent run.
 import json
 import uuid
 
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from pydantic_ai.messages import (
@@ -20,13 +20,19 @@ from pydantic_ai.messages import (
     TextPart,
     TextPartDelta,
 )
+from sqlalchemy import select
+from sqlalchemy.orm import Session as DbSession
 
 from agents.chat import send_message
 from agents.main import get_article_summary, get_sentiment_streaming
 from agents.stock_team import get_team_analysis
+from core.auth import get_current_user
+from core.db import get_db
+from core.models_db import TeamVerdictRecord, User
 from core.routers import auth as auth_router
 from core.routers import brokerage as brokerage_router
 from core.sse import Final, format_sse, run_agent_streaming
+from core.track_record import aggregate_stats, log_verdict, score_record
 from core.tools import (
     DEFAULT_WATCHLIST,
     NEWS_CATEGORY_TICKERS,
@@ -386,16 +392,22 @@ async def get_ticker_snapshot(ticker: str) -> StreamingResponse:
 
 
 @app.get("/tickers/{ticker}/team")
-async def get_ticker_team_analysis(ticker: str) -> StreamingResponse:
+async def get_ticker_team_analysis(
+    ticker: str, user: User = Depends(get_current_user), db: DbSession = Depends(get_db)
+) -> StreamingResponse:
     ticker = ticker.upper()
 
     async def event_source():
         try:
             async for item in run_agent_streaming(
-                lambda handler: get_team_analysis(ticker, event_stream_handler=handler)
+                lambda handler: get_team_analysis(ticker, event_stream_handler=handler, db=db, user_id=user.id)
             ):
                 if isinstance(item, Final):
-                    yield format_sse("verdict", json.dumps(item.value.model_dump()))
+                    analysis = item.value
+                    log_verdict(db, user.id, ticker, get_stock_price(ticker), analysis.verdict)
+                    payload = analysis.verdict.model_dump()
+                    payload["is_held"] = analysis.is_held
+                    yield format_sse("verdict", json.dumps(payload))
                     continue
                 sse_event = _sse_event_for(item)
                 if sse_event is not None:
@@ -404,6 +416,19 @@ async def get_ticker_team_analysis(ticker: str) -> StreamingResponse:
             yield format_sse("error", json.dumps({"detail": str(e)}))
 
     return StreamingResponse(event_source(), media_type="text/event-stream")
+
+
+@app.get("/track-record")
+def get_track_record(
+    ticker: str | None = None, user: User = Depends(get_current_user), db: DbSession = Depends(get_db)
+) -> dict:
+    query = select(TeamVerdictRecord).where(TeamVerdictRecord.user_id == user.id)
+    if ticker:
+        query = query.where(TeamVerdictRecord.ticker == ticker.upper())
+    query = query.order_by(TeamVerdictRecord.call_date.desc())
+
+    records = [score_record(record) for record in db.execute(query).scalars().all()]
+    return {"records": records, "stats": aggregate_stats(records)}
 
 
 @app.post("/chat")

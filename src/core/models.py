@@ -52,9 +52,32 @@ class PortfolioDigest(BaseModel):
     )
 
 
+class SpecialistFinding(BaseModel):
+    signal: Literal["positive", "neutral", "negative"] = Field(
+        description="Overall lean implied by this specialist's analysis of the ticker"
+    )
+    headline: str = Field(description="One short sentence (under ~12 words) naming the core takeaway")
+    key_points: list[str] = Field(
+        description="2-4 short bullet points (under ~15 words each) citing concrete figures from the "
+        "specialist's tools, not restating the headline"
+    )
+
+
 class TeamVerdict(BaseModel):
     ticker: str = Field(description="Stock ticker symbol, e.g. AAPL")
     verdict: Literal["buy", "hold", "sell"] = Field(
-        description="Overall recommendation weighing both fundamentals and sentiment"
+        description="Overall recommendation weighing all specialists' findings"
     )
-    reasoning: str = Field(description="Brief explanation of the verdict, citing both specialists' findings")
+    key_factors: list[str] = Field(
+        description="3-6 short bullet points, one per specialist consulted, naming the specialist and "
+        "its finding (e.g. 'Valuation: cheaper than peers on trailing P/E')"
+    )
+    reasoning: str = Field(description="One or two closing sentences tying the key factors into the verdict")
+    predicted_price: float = Field(
+        description="A specific target price for the ticker at the end of predicted_horizon, consistent "
+        "with the verdict and the specialists' findings (e.g. above current price for a buy)"
+    )
+    predicted_horizon: Literal["1w", "1mo", "3mo"] = Field(
+        description="Timeframe the predicted_price target is for - 1 week, 1 month, or 3 months out. "
+        "Matches the track record's scoring horizons so the prediction can be checked later."
+    )

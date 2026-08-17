@@ -3,9 +3,9 @@ which holds Pydantic API request/response shapes, not database tables.
 """
 
 import secrets
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 
-from sqlalchemy import DateTime, Float, ForeignKey, String
+from sqlalchemy import Date, DateTime, Float, ForeignKey, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from core.db import Base
@@ -103,6 +103,31 @@ class AuditLogEntry(Base):
     event_type: Mapped[str] = mapped_column(String(64))
     detail: Mapped[str | None] = mapped_column(String(255), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(), default=_now, index=True)
+
+
+class TeamVerdictRecord(Base):
+    """One logged Stock Team verdict, at most one per (user, ticker,
+    call_date) - regenerating the same ticker again the same day just
+    refreshes the on-screen view, it doesn't add a second row (see
+    core/track_record.py, which owns the dedupe-on-insert and the later
+    scoring against real historical prices)."""
+
+    __tablename__ = "team_verdicts"
+    __table_args__ = (UniqueConstraint("user_id", "ticker", "call_date", name="uq_team_verdict_per_ticker_day"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    ticker: Mapped[str] = mapped_column(String(16), index=True)
+    verdict: Mapped[str] = mapped_column(String(8))
+    key_factors: Mapped[str] = mapped_column(Text())
+    reasoning: Mapped[str] = mapped_column(Text())
+    price_at_call: Mapped[float] = mapped_column(Float())
+    # Nullable: rows logged before this field existed have no prediction to
+    # backfill, not just a missing value - None is the honest state for them.
+    predicted_price: Mapped[float | None] = mapped_column(Float(), nullable=True)
+    predicted_horizon: Mapped[str | None] = mapped_column(String(8), nullable=True)
+    call_date: Mapped[date] = mapped_column(Date(), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(), default=_now)
 
 
 class LlmCallLog(Base):

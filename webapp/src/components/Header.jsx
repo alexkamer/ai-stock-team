@@ -16,6 +16,7 @@ const NAV_LINKS = [
   },
   { to: '/chat', label: 'Chat', end: true },
   { to: '/brokerage', label: 'Brokerage', end: true },
+  { to: '/track-record', label: 'Track Record', end: true },
 ]
 
 export default function Header() {

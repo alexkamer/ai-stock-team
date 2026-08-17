@@ -157,6 +157,81 @@ def test_get_price_history_raises_when_empty(mock_ticker_cls):
         tools.get_price_history("BADTICKER")
 
 
+def _trending_history(direction: int, days: int = 260) -> pd.DataFrame:
+    """A constant-percent-daily-return price series (up for direction=1, down
+    for direction=-1) over `days` trading days - long enough to exercise all
+    three moving averages (20/50/200), unambiguous enough to pin down
+    RSI/MACD sign, and a ~0 realized volatility since the daily return never
+    varies."""
+    closes = [100.0 * (1 + direction * 0.002) ** i for i in range(days)]
+    return pd.DataFrame({"Close": closes}, index=pd.bdate_range("2024-01-01", periods=days))
+
+
+@patch("core.tools.yf.Ticker")
+def test_get_technical_indicators_uptrend(mock_ticker_cls):
+    mock_ticker_cls.return_value = make_ticker(history=_trending_history(direction=1))
+
+    indicators = tools.get_technical_indicators("NVDA")
+
+    assert indicators["above_sma_20"] is True
+    assert indicators["above_sma_50"] is True
+    assert indicators["above_sma_200"] is True
+    assert indicators["golden_cross"] is True
+    assert indicators["rsi_14"] == pytest.approx(100.0)
+    assert indicators["macd_bullish_crossover"] is True
+    assert indicators["volatility_30d_annualized_percent"] == pytest.approx(0.0, abs=1e-6)
+
+
+@patch("core.tools.yf.Ticker")
+def test_get_technical_indicators_downtrend(mock_ticker_cls):
+    mock_ticker_cls.return_value = make_ticker(history=_trending_history(direction=-1))
+
+    indicators = tools.get_technical_indicators("NVDA")
+
+    assert indicators["above_sma_20"] is False
+    assert indicators["above_sma_50"] is False
+    assert indicators["above_sma_200"] is False
+    assert indicators["golden_cross"] is False
+    assert indicators["rsi_14"] == pytest.approx(0.0)
+
+
+@patch("core.tools.yf.Ticker")
+def test_get_technical_indicators_macd_reflects_recent_trend(mock_ticker_cls):
+    # A short, unambiguous move - long decaying-rate windows eventually flatten
+    # in absolute terms regardless of direction (MACD reacts to absolute price
+    # deceleration, a real property of the indicator), which would make a
+    # 260-day series an unreliable way to pin down MACD's sign specifically.
+    mock_ticker_cls.return_value = make_ticker(history=_trending_history(direction=1, days=40))
+    assert tools.get_technical_indicators("NVDA")["macd_bullish_crossover"] is True
+
+    mock_ticker_cls.return_value = make_ticker(history=_trending_history(direction=-1, days=40))
+    assert tools.get_technical_indicators("NVDA")["macd_bullish_crossover"] is False
+
+
+@patch("core.tools.yf.Ticker")
+def test_get_technical_indicators_short_history_returns_none_for_long_windows(mock_ticker_cls):
+    history = pd.DataFrame({"Close": [100.0, 101.0]}, index=pd.bdate_range("2024-01-01", periods=2))
+    mock_ticker_cls.return_value = make_ticker(history=history)
+
+    indicators = tools.get_technical_indicators("NVDA")
+
+    assert indicators["sma_20"] is None
+    assert indicators["sma_50"] is None
+    assert indicators["sma_200"] is None
+    assert indicators["rsi_14"] is None
+    assert indicators["volatility_30d_annualized_percent"] is None
+    # MACD only needs an EWM, which is defined from the first data point.
+    assert indicators["macd"] is not None
+
+
+@patch("core.tools.yf.Ticker")
+def test_get_technical_indicators_raises_when_empty(mock_ticker_cls):
+    mock_ticker_cls.return_value = make_ticker(history=pd.DataFrame())
+
+    with pytest.raises(ValueError, match="No price history found"):
+        tools.get_technical_indicators("BADTICKER")
+
+
 @patch("core.tools.yf.Ticker")
 def test_get_company_name_prefers_long_name(mock_ticker_cls):
     mock_ticker_cls.return_value = make_ticker(info={"longName": "NVIDIA Corporation", "shortName": "NVIDIA"})

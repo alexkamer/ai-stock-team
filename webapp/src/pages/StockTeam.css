@@ -1,0 +1,228 @@
+.stock-team {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.stock-team__header h2 {
+  margin: 0 0 4px;
+}
+
+.stock-team__subtitle-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.stock-team__subtitle {
+  color: var(--text-muted);
+  margin: 0;
+}
+
+.stock-team__regenerate {
+  flex-shrink: 0;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-muted);
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 4px 10px;
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+
+.stock-team__regenerate:hover:not(:disabled) {
+  background: var(--surface-2);
+  color: var(--text-primary);
+}
+
+.stock-team__regenerate:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.stock-team__specialists {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+}
+
+@media (max-width: 760px) {
+  .stock-team__specialists {
+    grid-template-columns: 1fr;
+  }
+}
+
+.specialist-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  transition: border-color 0.2s ease;
+}
+
+.specialist-card--done {
+  border-color: var(--signal-border);
+}
+
+.specialist-card__header {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.specialist-card__label {
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--text-primary);
+}
+
+.specialist-card__description {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.specialist-card__headline {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  line-height: 1.4;
+}
+
+.specialist-card__points {
+  margin: 0;
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.4;
+}
+
+.specialist-card__points li {
+  padding-left: 2px;
+}
+
+.signal-dot {
+  flex-shrink: 0;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-top: 5px;
+}
+
+.signal-dot--positive {
+  background: var(--good);
+}
+
+.signal-dot--negative {
+  background: var(--critical);
+}
+
+.signal-dot--neutral {
+  background: var(--text-muted);
+}
+
+.specialist-card__pending {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.stock-team__verdict {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  border-radius: 3px;
+}
+
+.stock-team__verdict-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.stock-team__verdict-header-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.stock-team__target {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.stock-team__factors {
+  margin: 0;
+  padding-left: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 14px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.stock-team__reasoning {
+  color: var(--text-secondary);
+  line-height: 1.6;
+  margin: 0;
+  font-style: italic;
+}
+
+.stock-team__ownership-note {
+  margin: 0;
+  padding: 6px 10px;
+  border-radius: 3px;
+  background: var(--surface-2);
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.stock-team__history {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.verdict-badge {
+  padding: 4px 12px;
+  border-radius: 3px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.verdict-badge--buy {
+  background: var(--good-bg);
+  color: var(--good);
+}
+
+.verdict-badge--sell {
+  background: var(--critical-bg);
+  color: var(--critical);
+}
+
+.verdict-badge--hold {
+  background: var(--surface-2);
+  color: var(--text-secondary);
+}
+
+.stock-team__verdict--buy {
+  border-color: var(--good-bg);
+}
+
+.stock-team__verdict--sell {
+  border-color: var(--critical-bg);
+}
