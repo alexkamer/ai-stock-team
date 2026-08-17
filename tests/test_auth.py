@@ -9,14 +9,19 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from core import api
+from core import api, auth
 from core.db import Base, get_db
 
 client = TestClient(api.app)
 
 
 @pytest.fixture(autouse=True)
-def isolated_db():
+def isolated_db(monkeypatch):
+    # These tests exercise the real login/session flow, which only runs
+    # when AUTH_REQUIRED is on - the fork-and-run default bypasses it
+    # entirely via a single local user (see test_auth_optional.py).
+    monkeypatch.setattr(auth, "AUTH_REQUIRED", True)
+
     engine = create_engine(
         "sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool
     )
@@ -39,7 +44,7 @@ def isolated_db():
 def test_signup_creates_user_and_session_cookie():
     response = client.post("/auth/signup", json={"email": "a@example.com", "password": "hunter22"})
     assert response.status_code == 200
-    assert response.json() == {"id": 1, "email": "a@example.com"}
+    assert response.json() == {"id": 1, "email": "a@example.com", "auth_required": True}
     assert "session" in response.cookies
 
 

@@ -22,7 +22,7 @@ export default function Header() {
   const [query, setQuery] = useState('')
   const navigate = useNavigate()
   const location = useLocation()
-  const { user, isLoading, logout } = useAuth()
+  const { user, authRequired, isLoading, logout } = useAuth()
 
   async function handleLogout() {
     await logout()
@@ -91,7 +91,7 @@ export default function Header() {
           />
           <button type="submit">Go</button>
         </form>
-        {!isLoading && (
+        {!isLoading && authRequired && (
           <div className="app-header__account">
             {user ? (
               <>

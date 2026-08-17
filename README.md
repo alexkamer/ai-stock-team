@@ -101,11 +101,20 @@ up anywhere in the app, so there's no code path that could place a trade.
 Positions/balances are fetched live on every page load and never persisted
 — only which brokerage/account you've connected is stored.
 
-The app has user accounts backed by a local SQLite DB. Set up the schema and
-seed a standard admin account for local testing:
+The app has user accounts backed by a local SQLite DB. Set up the schema:
 
 ```bash
 uv run alembic upgrade head
+```
+
+By default (`AUTH_REQUIRED=false`, or just unset) the brokerage page skips
+login entirely — requests are transparently attributed to a single local
+user, since a fork-and-run instance only ever has one person using it.
+Login/signup only matter if you're hosting one instance for more than one
+person; set `AUTH_REQUIRED=true` in `.env` to turn them back on, then seed a
+standard admin account for testing:
+
+```bash
 uv run python -m core.seed_admin   # creates admin@example.com, prints/writes its password to .admin_credentials
 ```
 

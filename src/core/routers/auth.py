@@ -4,6 +4,7 @@ from fastapi import APIRouter, Cookie, Depends, HTTPException, Response
 from pydantic import BaseModel, EmailStr
 from sqlalchemy.orm import Session as DbSession
 
+from core import auth
 from core.auth import (
     COOKIE_SECURE,
     SESSION_COOKIE_NAME,
@@ -32,6 +33,13 @@ class LoginRequest(BaseModel):
 class UserResponse(BaseModel):
     id: int
     email: str
+    auth_required: bool
+
+
+def _user_response(user: User) -> UserResponse:
+    # Reads auth.AUTH_REQUIRED off the module (not a name bound at import
+    # time) so tests can monkeypatch it per-case.
+    return UserResponse(id=user.id, email=user.email, auth_required=auth.AUTH_REQUIRED)
 
 
 def _set_session_cookie(response: Response, token: str) -> None:
@@ -60,7 +68,7 @@ def signup(body: SignupRequest, response: Response, db: DbSession = Depends(get_
 
     session = create_session(db, user)
     _set_session_cookie(response, session.id)
-    return UserResponse(id=user.id, email=user.email)
+    return _user_response(user)
 
 
 @router.post("/login", response_model=UserResponse)
@@ -71,7 +79,7 @@ def login(body: LoginRequest, response: Response, db: DbSession = Depends(get_db
 
     session = create_session(db, user)
     _set_session_cookie(response, session.id)
-    return UserResponse(id=user.id, email=user.email)
+    return _user_response(user)
 
 
 @router.post("/logout")
@@ -89,4 +97,4 @@ def logout(
 
 @router.get("/me", response_model=UserResponse)
 def me(user: User = Depends(get_current_user)):
-    return UserResponse(id=user.id, email=user.email)
+    return _user_response(user)

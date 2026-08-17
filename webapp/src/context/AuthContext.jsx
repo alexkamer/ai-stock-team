@@ -11,11 +11,17 @@ const AuthContext = createContext(null)
  */
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null)
+  // Assume auth is required until /auth/me says otherwise, so the login
+  // gate doesn't flash open for a frame on a server that does require it.
+  const [authRequired, setAuthRequired] = useState(true)
   const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
     getJSON('/auth/me')
-      .then(setUser)
+      .then((account) => {
+        setUser(account)
+        setAuthRequired(account.auth_required)
+      })
       .catch(() => setUser(null))
       .finally(() => setIsLoading(false))
   }, [])
@@ -38,7 +44,9 @@ export function AuthProvider({ children }) {
   }
 
   return (
-    <AuthContext.Provider value={{ user, isLoading, signup, login, logout }}>{children}</AuthContext.Provider>
+    <AuthContext.Provider value={{ user, authRequired, isLoading, signup, login, logout }}>
+      {children}
+    </AuthContext.Provider>
   )
 }
 
