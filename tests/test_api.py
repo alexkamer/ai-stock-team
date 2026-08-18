@@ -541,6 +541,35 @@ def test_get_track_record_returns_scored_records_and_stats(mock_ticker_cls, isol
     assert body["stats"]["total_calls"] == 1
 
 
+@patch("core.track_record.yf.Ticker")
+def test_get_track_record_filters_by_multiple_tickers(mock_ticker_cls, isolated_db):
+    session = isolated_db()
+    for ticker in ("NVDA", "AAPL", "TSLA"):
+        session.add(
+            TeamVerdictRecord(
+                user_id=1,
+                ticker=ticker,
+                verdict="hold",
+                key_factors=json.dumps(["x"]),
+                reasoning="y",
+                price_at_call=100.0,
+                call_date=date.today() - timedelta(days=5),
+            )
+        )
+    session.commit()
+    session.close()
+
+    mock_ticker = MagicMock()
+    mock_ticker.history.return_value = pd.DataFrame()
+    mock_ticker_cls.return_value = mock_ticker
+
+    response = client.get("/track-record?tickers=NVDA,AAPL")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert {r["ticker"] for r in body["records"]} == {"NVDA", "AAPL"}
+
+
 @pytest.fixture(autouse=True)
 def clear_chat_sessions():
     chat._sessions.clear()

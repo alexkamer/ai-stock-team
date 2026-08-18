@@ -1,0 +1,112 @@
+.team-review {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.team-review__empty {
+  color: var(--text-muted);
+  font-size: 14px;
+}
+
+.team-review__controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.team-review__skip-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.team-review__run-button {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--text-primary);
+  background: var(--signal-bg);
+  border: 1px solid var(--signal-border);
+  border-radius: 4px;
+  padding: 6px 12px;
+  cursor: pointer;
+}
+
+.team-review__run-button:hover:not(:disabled) {
+  background: var(--surface-2);
+}
+
+.team-review__run-button:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.team-review__table-card {
+  padding: 0;
+  overflow-x: auto;
+}
+
+.team-review__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.team-review__table th {
+  text-align: left;
+  padding: 10px 14px;
+  font-family: var(--mono);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+
+.team-review__table td {
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+
+.team-review__table tr:last-child td {
+  border-bottom: none;
+}
+
+.team-review__cell--muted {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.team-review__cell--error {
+  color: var(--critical);
+  font-size: 12px;
+}
+
+.team-review__verdict-badge {
+  padding: 3px 10px;
+  border-radius: 3px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.team-review__verdict-badge--buy {
+  background: var(--good-bg);
+  color: var(--good);
+}
+
+.team-review__verdict-badge--sell {
+  background: var(--critical-bg);
+  color: var(--critical);
+}
+
+.team-review__verdict-badge--hold {
+  background: var(--surface-2);
+  color: var(--text-secondary);
+}

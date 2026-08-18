@@ -9,6 +9,7 @@ points) instead of free text, so the frontend can render scannable cards
 instead of a wall of prose.
 """
 
+import asyncio
 from dataclasses import dataclass
 
 from pydantic_ai import RunContext
@@ -192,7 +193,11 @@ def _ownership_instruction(ticker: str, is_held: bool | None) -> str:
 async def get_team_analysis(
     ticker: str, event_stream_handler=None, db=None, user_id: int | None = None
 ) -> TeamAnalysisResult:
-    portfolio_context = build_portfolio_context(db, user_id, ticker) if db is not None and user_id is not None else None
+    portfolio_context = (
+        await asyncio.to_thread(build_portfolio_context, db, user_id, ticker)
+        if db is not None and user_id is not None
+        else None
+    )
     is_held = portfolio_context.is_held if portfolio_context else None
 
     result = await synthesizer.run(

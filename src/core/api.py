@@ -6,6 +6,7 @@ frontend can render tool-call-in-flight pills and text deltas instead of
 blocking on the full agent run.
 """
 
+import asyncio
 import json
 import uuid
 
@@ -319,23 +320,30 @@ def get_ticker_history(ticker: str, period: str = "1mo", benchmark: str | None =
 async def get_ticker_snapshot(ticker: str) -> StreamingResponse:
     ticker = ticker.upper()
 
+    def _fetch_quote() -> dict:
+        return {
+            "ticker": ticker,
+            "company_name": get_company_name(ticker),
+            "price": get_stock_price(ticker),
+            "market_cap": get_market_cap(ticker),
+            "pe_ratio": get_pe_ratio(ticker),
+            "news_headlines": get_news_headlines(ticker),
+            "news": get_market_news([ticker], limit=8),
+            "similar_tickers": get_similar_tickers(ticker),
+            **get_day_change(ticker),
+            **get_ticker_stats(ticker),
+        }
+
     async def event_source():
         try:
             # Plain tools.py calls (cached yfinance, no LLM) - sent as one
             # `quote` event immediately so the header/stats/price render
-            # without waiting on the sentiment agent below.
-            quote = {
-                "ticker": ticker,
-                "company_name": get_company_name(ticker),
-                "price": get_stock_price(ticker),
-                "market_cap": get_market_cap(ticker),
-                "pe_ratio": get_pe_ratio(ticker),
-                "news_headlines": get_news_headlines(ticker),
-                "news": get_market_news([ticker], limit=8),
-                "similar_tickers": get_similar_tickers(ticker),
-                **get_day_change(ticker),
-                **get_ticker_stats(ticker),
-            }
+            # without waiting on the sentiment agent below. Offloaded to a
+            # thread since these are blocking network calls and this handler
+            # is `async def`, so FastAPI won't put it in a threadpool itself -
+            # left inline, it would freeze the single event loop and stall
+            # every other tab's in-flight request too.
+            quote = await asyncio.to_thread(_fetch_quote)
         except ValueError as e:
             yield format_sse("error", json.dumps({"detail": str(e)}))
             return
@@ -404,7 +412,11 @@ async def get_ticker_team_analysis(
             ):
                 if isinstance(item, Final):
                     analysis = item.value
-                    log_verdict(db, user.id, ticker, get_stock_price(ticker), analysis.verdict)
+
+                    def _log_verdict() -> None:
+                        log_verdict(db, user.id, ticker, get_stock_price(ticker), analysis.verdict)
+
+                    await asyncio.to_thread(_log_verdict)
                     payload = analysis.verdict.model_dump()
                     payload["is_held"] = analysis.is_held
                     yield format_sse("verdict", json.dumps(payload))
@@ -420,11 +432,17 @@ async def get_ticker_team_analysis(
 
 @app.get("/track-record")
 def get_track_record(
-    ticker: str | None = None, user: User = Depends(get_current_user), db: DbSession = Depends(get_db)
+    ticker: str | None = None,
+    tickers: str | None = None,
+    user: User = Depends(get_current_user),
+    db: DbSession = Depends(get_db),
 ) -> dict:
     query = select(TeamVerdictRecord).where(TeamVerdictRecord.user_id == user.id)
     if ticker:
         query = query.where(TeamVerdictRecord.ticker == ticker.upper())
+    elif tickers:
+        symbols = [t.strip().upper() for t in tickers.split(",") if t.strip()]
+        query = query.where(TeamVerdictRecord.ticker.in_(symbols))
     query = query.order_by(TeamVerdictRecord.call_date.desc())
 
     records = [score_record(record) for record in db.execute(query).scalars().all()]

@@ -1,6 +1,7 @@
 """CLI entry point: uv run python main.py TICKER"""
 
 import argparse
+import asyncio
 import sys
 from time import monotonic
 
@@ -95,7 +96,7 @@ async def get_article_summary(url: str) -> ArticleSummary:
     summarize in the first place.
     """
     try:
-        scraped = scrape_article(url)
+        scraped = await asyncio.to_thread(scrape_article, url)
     except requests.RequestException as e:
         raise ValueError("Couldn't fetch this article - the site may be blocking automated requests") from e
 

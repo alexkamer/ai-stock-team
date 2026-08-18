@@ -8,6 +8,7 @@ import PortfolioTreemap from './PortfolioTreemap'
 import PositionsTable from './PositionsTable'
 import Skeleton from './Skeleton'
 import SkeletonRows from './SkeletonRows'
+import TeamReviewTab from './TeamReviewTab'
 import './PortfolioOverview.css'
 
 // Keeps the /news query string bounded for portfolios with many distinct
@@ -244,6 +245,13 @@ export default function PortfolioOverview({ portfolio, connections, updatedAt })
         >
           Daily Digest
         </button>
+        <button
+          type="button"
+          className={`portfolio-overview__tab ${tab === 'team' ? 'portfolio-overview__tab--active' : ''}`}
+          onClick={() => setTab('team')}
+        >
+          Team Review
+        </button>
       </div>
 
       <div className="portfolio-overview__view-header">
@@ -254,12 +262,14 @@ export default function PortfolioOverview({ portfolio, connections, updatedAt })
               ? 'News for your holdings'
               : tab === 'digest'
                 ? 'Daily Digest'
-                : view === 'table'
-                  ? 'Holdings'
-                  : "Holdings by size, colored by today's change"}
+                : tab === 'team'
+                  ? 'Team Analysis for your holdings'
+                  : view === 'table'
+                    ? 'Holdings'
+                    : "Holdings by size, colored by today's change"}
         </span>
         <div className="portfolio-overview__controls">
-          {tab !== 'digest' && (
+          {tab !== 'digest' && tab !== 'team' && (
             <select
               className="portfolio-overview__account-select"
               value={accountId}
@@ -309,6 +319,8 @@ export default function PortfolioOverview({ portfolio, connections, updatedAt })
         ) : (
           <PositionsTable positions={positions} isLoading={isLoadingPositions} showAfterHours={afterHours} />
         )
+      ) : tab === 'team' ? (
+        <TeamReviewTab positions={portfolio.positions} totalValue={portfolio.total_value} />
       ) : tab === 'news' ? (
         <NewsFeed
           articles={newsByAccount[accountId] ?? null}
