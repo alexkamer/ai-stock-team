@@ -68,6 +68,14 @@
   align-items: baseline;
   gap: 8px;
   white-space: nowrap;
+  text-decoration: none;
+  color: inherit;
+  border-radius: 6px;
+  transition: background-color 0.15s ease;
+}
+
+.market-strip__item:hover {
+  background-color: var(--surface-hover, rgba(255, 255, 255, 0.06));
 }
 
 .market-strip__label {

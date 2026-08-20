@@ -15,15 +15,18 @@ const NEWS_CATEGORIES = [
   { key: 'tech', label: 'Tech & AI' },
 ]
 
+// chartSymbol is what TradingView (advanced charts) resolves - raw index/futures
+// tickers like ^GSPC or GC=F aren't recognized by the free widget, so indices and
+// commodities point at their tracking ETFs instead.
 const MARKET_INSTRUMENTS = [
-  { ticker: '^GSPC', label: 'S&P 500' },
-  { ticker: '^DJI', label: 'Dow 30' },
-  { ticker: '^IXIC', label: 'Nasdaq' },
-  { ticker: '^RUT', label: 'Russell 2000' },
-  { ticker: '^VIX', label: 'VIX' },
-  { ticker: 'GC=F', label: 'Gold' },
-  { ticker: 'BTC-USD', label: 'Bitcoin USD' },
-  { ticker: 'CL=F', label: 'Crude Oil' },
+  { ticker: '^GSPC', label: 'S&P 500', chartSymbol: 'SPY' },
+  { ticker: '^DJI', label: 'Dow 30', chartSymbol: 'DIA' },
+  { ticker: '^IXIC', label: 'Nasdaq', chartSymbol: 'QQQ' },
+  { ticker: '^RUT', label: 'Russell 2000', chartSymbol: 'IWM' },
+  { ticker: '^VIX', label: 'VIX', chartSymbol: 'VIX' },
+  { ticker: 'GC=F', label: 'Gold', chartSymbol: 'GLD' },
+  { ticker: 'BTC-USD', label: 'Bitcoin USD', chartSymbol: 'BTCUSD' },
+  { ticker: 'CL=F', label: 'Crude Oil', chartSymbol: 'USO' },
 ]
 
 function ChangeBadge({ percent }) {
@@ -241,11 +244,15 @@ export default function Dashboard() {
     <div className="dashboard">
       <section className="market-strip">
         <div className="market-strip__track" ref={trackRef} onScroll={updateScrollState}>
-          {MARKET_INSTRUMENTS.map(({ ticker, label }) => {
+          {MARKET_INSTRUMENTS.map(({ ticker, label, chartSymbol }) => {
             const q = marketQuotes[ticker]
             const positive = (q?.day_change_percent ?? 0) >= 0
             return (
-              <div key={ticker} className="market-strip__item">
+              <Link
+                key={ticker}
+                to={`/research/advanced-charts?symbol=${chartSymbol}`}
+                className="market-strip__item"
+              >
                 <span className="market-strip__label">{label}</span>
                 {q ? (
                   <>
@@ -260,7 +267,7 @@ export default function Dashboard() {
                 ) : (
                   <span className="market-strip__price market-strip__price--loading" />
                 )}
-              </div>
+              </Link>
             )
           })}
         </div>
