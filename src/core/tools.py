@@ -143,6 +143,53 @@ def get_ticker_stats(ticker: str) -> dict:
     }
 
 
+def get_analyst_ratings(ticker: str) -> dict:
+    """Look up Wall Street analyst consensus for a stock ticker: rating,
+    price target range, the current buy/hold/sell breakdown, and the most
+    recent rating changes.
+
+    Args:
+        ticker: Stock ticker symbol, e.g. 'NVDA'.
+    """
+    info = _get_info(ticker)
+    yf_ticker = yf.Ticker(ticker)
+
+    trend = None
+    recommendations = yf_ticker.recommendations
+    if recommendations is not None and not recommendations.empty:
+        current = recommendations.iloc[0]
+        trend = {
+            "strong_buy": int(current.get("strongBuy", 0)),
+            "buy": int(current.get("buy", 0)),
+            "hold": int(current.get("hold", 0)),
+            "sell": int(current.get("sell", 0)),
+            "strong_sell": int(current.get("strongSell", 0)),
+        }
+
+    recent_changes = []
+    upgrades_downgrades = yf_ticker.upgrades_downgrades
+    if upgrades_downgrades is not None and not upgrades_downgrades.empty:
+        recent = upgrades_downgrades.sort_index(ascending=False).head(6)
+        for graded_at, row in recent.iterrows():
+            recent_changes.append({
+                "date": graded_at.date().isoformat(),
+                "firm": row.get("Firm"),
+                "action": row.get("Action"),
+                "from_grade": row.get("FromGrade") or None,
+                "to_grade": row.get("ToGrade"),
+            })
+
+    return {
+        "rating": info.get("averageAnalystRating"),
+        "target_mean": info.get("targetMeanPrice"),
+        "target_low": info.get("targetLowPrice"),
+        "target_high": info.get("targetHighPrice"),
+        "analyst_count": info.get("numberOfAnalystOpinions"),
+        "recommendation_trend": trend,
+        "recent_changes": recent_changes,
+    }
+
+
 def get_ticker_overview(ticker: str) -> dict:
     """Look up valuation, profitability, and company-profile fields for a
     stock ticker, for the stock comparison page's side-by-side tables.

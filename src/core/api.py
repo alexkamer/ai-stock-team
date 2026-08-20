@@ -37,6 +37,7 @@ from core.track_record import aggregate_stats, log_verdict, score_record
 from core.tools import (
     DEFAULT_WATCHLIST,
     NEWS_CATEGORY_TICKERS,
+    get_analyst_ratings,
     get_best_historical_performers,
     get_company_name,
     get_day_change,
@@ -314,6 +315,11 @@ def get_ticker_history(ticker: str, period: str = "1mo", benchmark: str | None =
         return {"period": period, **get_sparkline(ticker, period=period, benchmark=benchmark)}
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e)) from e
+
+
+@app.get("/tickers/{ticker}/analyst-ratings")
+def get_ticker_analyst_ratings(ticker: str) -> dict:
+    return get_analyst_ratings(ticker.upper())
 
 
 @app.get("/tickers/{ticker}")

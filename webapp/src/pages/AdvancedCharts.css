@@ -1,3 +1,11 @@
+/* This page is a charting tool, not a reading page - the shared .page
+   1080px cap starves TradingView's own details/hotlist/calendar side panel
+   of room, so it collapses into an unreadably narrow strip. Widen just this
+   route; .page's existing max-width:100% still caps it on narrow viewports. */
+.page:has(.advanced-charts) {
+  width: 1720px;
+}
+
 .advanced-charts {
   display: flex;
   gap: 20px;
@@ -205,6 +213,35 @@
   background: var(--border);
 }
 
+.advanced-charts__range {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.advanced-charts__range-btn {
+  border: 1px solid transparent;
+  background: none;
+  color: var(--text-secondary);
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 4px 9px;
+  border-radius: 3px;
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+
+.advanced-charts__range-btn:hover {
+  background: var(--surface-2);
+  color: var(--text-primary);
+}
+
+.advanced-charts__range-btn--active {
+  background: var(--signal-bg);
+  color: var(--signal);
+}
+
 .advanced-charts__compare {
   display: flex;
   align-items: center;
@@ -270,4 +307,120 @@
 .advanced-charts__chart {
   height: 70vh;
   min-height: 520px;
+}
+
+.advanced-charts__research {
+  flex: 0 0 268px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  position: sticky;
+  top: 20px;
+}
+
+.advanced-charts__research-block {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.advanced-charts__research-block + .advanced-charts__research-block {
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+
+.advanced-charts__research-label {
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+}
+
+.advanced-charts__research-value {
+  font-family: var(--display);
+  font-weight: 600;
+  font-size: 18px;
+  color: var(--text-primary);
+}
+
+.advanced-charts__research-caption {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.advanced-charts__rec-trend {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.advanced-charts__rec-trend-bar {
+  display: flex;
+  height: 8px;
+  border-radius: 3px;
+  overflow: hidden;
+  background: var(--surface-2);
+}
+
+.advanced-charts__rec-trend-seg--buy {
+  background: var(--good);
+}
+
+.advanced-charts__rec-trend-seg--hold {
+  background: var(--border-strong);
+}
+
+.advanced-charts__rec-trend-seg--sell {
+  background: var(--critical);
+}
+
+.advanced-charts__rec-trend-legend {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.advanced-charts__rec-trend-legend-item--buy {
+  color: var(--good);
+}
+
+.advanced-charts__rec-trend-legend-item--sell {
+  color: var(--critical);
+}
+
+.advanced-charts__rec-changes {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.advanced-charts__rec-change {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 6px;
+  font-size: 12px;
+}
+
+.advanced-charts__rec-change-firm {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.advanced-charts__rec-change-grade {
+  color: var(--text-secondary);
+}
+
+.advanced-charts__rec-change-date {
+  flex: 1 0 auto;
+  text-align: right;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-muted);
 }
