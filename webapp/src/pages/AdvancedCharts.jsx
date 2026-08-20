@@ -14,6 +14,16 @@ const CONTAINER_ID = 'advanced-charts-tv-container'
 const DEFAULT_SYMBOL = 'AAPL'
 const STORAGE_KEY = 'advanced-charts-symbol'
 
+// A starter indicator set so the chart opens with real technical context
+// instead of a bare price line - all free studies built into the widget.
+const DEFAULT_STUDIES = ['MASimple@tv-basicstudies', 'Volume@tv-basicstudies', 'RSI@tv-basicstudies']
+
+const COMPARE_PRESETS = [
+  { symbol: 'SPY', label: 'S&P 500' },
+  { symbol: 'QQQ', label: 'Nasdaq 100' },
+  { symbol: 'DIA', label: 'Dow 30' },
+]
+
 // No exchange info is available anywhere in this app's API, so we pass
 // bare tickers straight through - TradingView resolves the right listing
 // (e.g. "JPM" -> NYSE:JPM) on its own. An explicit "EXCHANGE:TICKER" input
@@ -112,6 +122,7 @@ export default function AdvancedCharts() {
       DEFAULT_SYMBOL,
   )
   const [searchInput, setSearchInput] = useState('')
+  const [compareSymbols, setCompareSymbols] = useState([])
   const containerRef = useRef(null)
 
   function setSymbol(next) {
@@ -193,13 +204,26 @@ export default function AdvancedCharts() {
         locale: 'en',
         enable_publishing: false,
         allow_symbol_change: true,
+        studies: DEFAULT_STUDIES,
+        details: true,
+        hotlist: true,
+        calendar: true,
+        // Compare overlays are a construction-time param on the free widget,
+        // not a live JS API call - the widget has to be rebuilt to change them.
+        compareSymbols: compareSymbols.map((s) => ({ symbol: s, position: 'SameScale' })),
         container_id: CONTAINER_ID,
       })
     })
     return () => {
       cancelled = true
     }
-  }, [symbol])
+  }, [symbol, compareSymbols])
+
+  function toggleCompare(compareSymbol) {
+    setCompareSymbols((prev) =>
+      prev.includes(compareSymbol) ? prev.filter((s) => s !== compareSymbol) : [...prev, compareSymbol],
+    )
+  }
 
   function handleSearchSubmit(e) {
     e.preventDefault()
@@ -249,18 +273,43 @@ export default function AdvancedCharts() {
       </aside>
 
       <div className="advanced-charts__main">
-        <form className="advanced-charts__search card" onSubmit={handleSearchSubmit}>
-          <input
-            type="text"
-            value={searchInput}
-            onChange={(e) => setSearchInput(e.target.value)}
-            placeholder="Search symbol (e.g. AAPL, NASDAQ:MSFT)"
-            className="advanced-charts__search-input"
-          />
-          <button type="submit" className="advanced-charts__search-submit">
-            Go
-          </button>
-        </form>
+        <div className="advanced-charts__toolbar card">
+          <form className="advanced-charts__search" onSubmit={handleSearchSubmit}>
+            <input
+              type="text"
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
+              placeholder="Search symbol (e.g. AAPL, NASDAQ:MSFT)"
+              className="advanced-charts__search-input"
+            />
+            <button type="submit" className="advanced-charts__search-submit">
+              Go
+            </button>
+          </form>
+          <div className="advanced-charts__compare">
+            <span className="advanced-charts__compare-label">Compare</span>
+            {COMPARE_PRESETS.map((p) => (
+              <button
+                key={p.symbol}
+                type="button"
+                className={`advanced-charts__compare-btn${compareSymbols.includes(p.symbol) ? ' advanced-charts__compare-btn--active' : ''}`}
+                onClick={() => toggleCompare(p.symbol)}
+                title={p.label}
+              >
+                {p.symbol}
+              </button>
+            ))}
+            {compareSymbols.length > 0 && (
+              <button
+                type="button"
+                className="advanced-charts__compare-btn advanced-charts__compare-btn--clear"
+                onClick={() => setCompareSymbols([])}
+              >
+                Clear
+              </button>
+            )}
+          </div>
+        </div>
 
         <div className="card advanced-charts__chart-card">
           <div id={CONTAINER_ID} ref={containerRef} className="advanced-charts__chart" />
