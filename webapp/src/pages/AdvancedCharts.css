@@ -321,12 +321,10 @@
 .advanced-charts__research-block {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-}
-
-.advanced-charts__research-block + .advanced-charts__research-block {
-  padding-top: 14px;
-  border-top: 1px solid var(--border);
+  gap: 8px;
+  background: var(--surface-2);
+  border-radius: 3px;
+  padding: 12px;
 }
 
 .advanced-charts__research-label {
@@ -350,18 +348,86 @@
   color: var(--text-muted);
 }
 
+.advanced-charts__consensus-row {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.advanced-charts__consensus-score {
+  font-family: var(--display);
+  font-weight: 700;
+  font-size: 26px;
+  color: var(--text-primary);
+  letter-spacing: -0.02em;
+}
+
+.advanced-charts__rating-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 9px;
+  border-radius: 3px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.advanced-charts__rating-badge--good {
+  color: var(--good);
+  background: var(--good-bg);
+}
+
+.advanced-charts__rating-badge--bad {
+  color: var(--critical);
+  background: var(--critical-bg);
+}
+
+.advanced-charts__rating-badge--neutral {
+  color: var(--text-secondary);
+  background: var(--surface-1);
+}
+
+.advanced-charts__rating-gauge {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.advanced-charts__rating-track {
+  position: relative;
+  height: 6px;
+  border-radius: 3px;
+  background: linear-gradient(90deg, var(--good), var(--border-strong), var(--critical));
+}
+
+.advanced-charts__rating-marker {
+  position: absolute;
+  top: 50%;
+  width: 3px;
+  height: 14px;
+  background: var(--text-primary);
+  border: 1px solid var(--surface-1);
+  transform: translate(-50%, -50%);
+}
+
+.advanced-charts__rating-scale {
+  display: flex;
+  justify-content: space-between;
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
 .advanced-charts__rec-trend {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
 }
 
 .advanced-charts__rec-trend-bar {
   display: flex;
-  height: 8px;
+  height: 10px;
   border-radius: 3px;
   overflow: hidden;
-  background: var(--surface-2);
+  background: var(--surface-1);
 }
 
 .advanced-charts__rec-trend-seg--buy {
@@ -380,6 +446,7 @@
   display: flex;
   justify-content: space-between;
   font-size: 11px;
+  font-weight: 600;
   color: var(--text-muted);
 }
 
@@ -397,30 +464,73 @@
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
 }
 
 .advanced-charts__rec-change {
   display: flex;
-  flex-wrap: wrap;
+  flex-direction: column;
+  gap: 3px;
+  background: var(--surface-1);
+  border-radius: 3px;
+  padding: 8px 10px;
+}
+
+.advanced-charts__rec-change-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.advanced-charts__rec-change-bottom {
+  display: flex;
   align-items: baseline;
-  gap: 4px 6px;
-  font-size: 12px;
+  justify-content: space-between;
+  gap: 6px;
 }
 
 .advanced-charts__rec-change-firm {
   font-weight: 600;
+  font-size: 12px;
   color: var(--text-primary);
 }
 
 .advanced-charts__rec-change-grade {
+  font-size: 11px;
   color: var(--text-secondary);
 }
 
 .advanced-charts__rec-change-date {
-  flex: 1 0 auto;
-  text-align: right;
-  font-family: var(--mono);
   font-size: 11px;
   color: var(--text-muted);
+}
+
+.advanced-charts__action-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px 7px;
+  border-radius: 3px;
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+}
+
+.advanced-charts__action-badge--good {
+  color: var(--good);
+  background: var(--good-bg);
+}
+
+.advanced-charts__action-badge--bad {
+  color: var(--critical);
+  background: var(--critical-bg);
+}
+
+.advanced-charts__action-badge--neutral {
+  color: var(--text-muted);
+  background: var(--surface-1);
 }

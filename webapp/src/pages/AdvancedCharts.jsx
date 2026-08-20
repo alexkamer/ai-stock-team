@@ -132,6 +132,37 @@ function SidebarSection({ title, tickers, emptyMessage, activeTicker, onSelect, 
   )
 }
 
+// yfinance's averageAnalystRating comes as a string like "2.1 - Buy" - split
+// it into the numeric score (for the gauge) and label (for the badge).
+function parseRating(rating) {
+  const match = rating?.match(/^([\d.]+)\s*-\s*(.+)$/)
+  return match ? { score: parseFloat(match[1]), label: match[2] } : null
+}
+
+function ratingTone(score) {
+  if (score <= 2.5) return 'good'
+  if (score >= 3.5) return 'bad'
+  return 'neutral'
+}
+
+// A 1 (Strong Buy) to 5 (Strong Sell) gauge, mirroring RangeBar's marker-on-
+// a-track shape so the whole panel reads as one family of gauges rather than
+// a one-off.
+function RatingGauge({ score }) {
+  const pct = Math.max(0, Math.min(100, ((score - 1) / 4) * 100))
+  return (
+    <div className="advanced-charts__rating-gauge">
+      <div className="advanced-charts__rating-track">
+        <div className="advanced-charts__rating-marker" style={{ left: `${pct}%` }} />
+      </div>
+      <div className="advanced-charts__rating-scale">
+        <span>Strong Buy</span>
+        <span>Strong Sell</span>
+      </div>
+    </div>
+  )
+}
+
 // Collapses the 5-way Strong Buy..Strong Sell breakdown down to the same
 // buy/hold/sell vocabulary used everywhere else in the app (track record
 // verdicts, etc.) instead of introducing a new 5-color scale.
@@ -141,42 +172,57 @@ function RecommendationTrendBar({ trend }) {
   const sell = trend.sell + trend.strong_sell
   const total = buy + hold + sell
   if (total === 0) return null
+  const pct = (n) => Math.round((n / total) * 100)
   return (
     <div className="advanced-charts__rec-trend">
       <div className="advanced-charts__rec-trend-bar">
         {buy > 0 && (
           <div
             className="advanced-charts__rec-trend-seg advanced-charts__rec-trend-seg--buy"
-            style={{ width: `${(buy / total) * 100}%` }}
+            style={{ width: `${pct(buy)}%` }}
           />
         )}
         {hold > 0 && (
           <div
             className="advanced-charts__rec-trend-seg advanced-charts__rec-trend-seg--hold"
-            style={{ width: `${(hold / total) * 100}%` }}
+            style={{ width: `${pct(hold)}%` }}
           />
         )}
         {sell > 0 && (
           <div
             className="advanced-charts__rec-trend-seg advanced-charts__rec-trend-seg--sell"
-            style={{ width: `${(sell / total) * 100}%` }}
+            style={{ width: `${pct(sell)}%` }}
           />
         )}
       </div>
       <div className="advanced-charts__rec-trend-legend">
         <span className="advanced-charts__rec-trend-legend-item advanced-charts__rec-trend-legend-item--buy">
-          Buy {buy}
+          Buy {pct(buy)}%
         </span>
-        <span className="advanced-charts__rec-trend-legend-item">Hold {hold}</span>
+        <span className="advanced-charts__rec-trend-legend-item">Hold {pct(hold)}%</span>
         <span className="advanced-charts__rec-trend-legend-item advanced-charts__rec-trend-legend-item--sell">
-          Sell {sell}
+          Sell {pct(sell)}%
         </span>
       </div>
     </div>
   )
 }
 
+const ACTION_LABEL = { up: 'Upgrade', down: 'Downgrade', main: 'Maintain', reit: 'Reiterate', init: 'Initiate' }
+
+function ActionBadge({ action }) {
+  const tone = action === 'up' ? 'good' : action === 'down' ? 'bad' : 'neutral'
+  const arrow = action === 'up' ? '↑' : action === 'down' ? '↓' : ''
+  return (
+    <span className={`advanced-charts__action-badge advanced-charts__action-badge--${tone}`}>
+      {arrow} {ACTION_LABEL[action] ?? action}
+    </span>
+  )
+}
+
 function AnalystPanel({ ticker, price, ratings }) {
+  const parsedRating = ratings ? parseRating(ratings.rating) : null
+
   return (
     <aside className="advanced-charts__research card">
       <h3 className="advanced-charts__sidebar-title">Analyst Ratings</h3>
@@ -188,7 +234,21 @@ function AnalystPanel({ ticker, price, ratings }) {
         <>
           <div className="advanced-charts__research-block">
             <span className="advanced-charts__research-label">Consensus</span>
-            <span className="advanced-charts__research-value">{ratings.rating ?? '—'}</span>
+            {parsedRating ? (
+              <>
+                <div className="advanced-charts__consensus-row">
+                  <span className="advanced-charts__consensus-score num">{parsedRating.score.toFixed(1)}</span>
+                  <span
+                    className={`advanced-charts__rating-badge advanced-charts__rating-badge--${ratingTone(parsedRating.score)}`}
+                  >
+                    {parsedRating.label}
+                  </span>
+                </div>
+                <RatingGauge score={parsedRating.score} />
+              </>
+            ) : (
+              <span className="advanced-charts__research-value">{ratings.rating ?? '—'}</span>
+            )}
             {ratings.analyst_count ? (
               <span className="advanced-charts__research-caption">{ratings.analyst_count} analysts</span>
             ) : null}
@@ -220,12 +280,17 @@ function AnalystPanel({ ticker, price, ratings }) {
               <ul className="advanced-charts__rec-changes">
                 {ratings.recent_changes.map((c, i) => (
                   <li key={i} className="advanced-charts__rec-change">
-                    <span className="advanced-charts__rec-change-firm">{c.firm}</span>
-                    <span className="advanced-charts__rec-change-grade">
-                      {c.from_grade && c.from_grade !== c.to_grade ? `${c.from_grade} → ` : ''}
-                      {c.to_grade}
-                    </span>
-                    <span className="advanced-charts__rec-change-date">{c.date}</span>
+                    <div className="advanced-charts__rec-change-top">
+                      <span className="advanced-charts__rec-change-firm">{c.firm}</span>
+                      <ActionBadge action={c.action} />
+                    </div>
+                    <div className="advanced-charts__rec-change-bottom">
+                      <span className="advanced-charts__rec-change-grade">
+                        {c.from_grade && c.from_grade !== c.to_grade ? `${c.from_grade} → ` : ''}
+                        {c.to_grade}
+                      </span>
+                      <span className="advanced-charts__rec-change-date num">{c.date}</span>
+                    </div>
                   </li>
                 ))}
               </ul>
