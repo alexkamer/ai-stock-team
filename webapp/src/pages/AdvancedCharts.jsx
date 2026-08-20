@@ -1,7 +1,13 @@
 import { useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
+import { getJSON } from '../api/client'
 import { useWatchlist } from '../context/WatchlistContext'
 import './AdvancedCharts.css'
+
+// How many tickers to show in the auto-populated (non-watchlist) sections -
+// these are lists that could otherwise grow unbounded (holdings, trending,
+// analysis history), so each is capped to keep the sidebar scannable.
+const SECTION_LIMIT = 8
 
 const TV_SCRIPT_SRC = 'https://s3.tradingview.com/tv.js'
 const CONTAINER_ID = 'advanced-charts-tv-container'
@@ -40,8 +46,63 @@ function loadPersistedSymbol() {
   }
 }
 
+function SidebarSection({ title, tickers, emptyMessage, activeTicker, onSelect, quotes }) {
+  return (
+    <div className="advanced-charts__sidebar-section">
+      <h3 className="advanced-charts__sidebar-title">{title}</h3>
+      {tickers === null ? (
+        <ul className="advanced-charts__watchlist">
+          {[0, 1, 2].map((i) => (
+            <li key={i} className="advanced-charts__ticker-row advanced-charts__ticker-row--loading" />
+          ))}
+        </ul>
+      ) : tickers.length === 0 ? (
+        <p className="advanced-charts__sidebar-empty">{emptyMessage}</p>
+      ) : (
+        <ul className="advanced-charts__watchlist">
+          {tickers.map((t) => {
+            const q = quotes[t]
+            const positive = (q?.day_change_percent ?? 0) >= 0
+            return (
+              <li key={t}>
+                <button
+                  type="button"
+                  className={`advanced-charts__ticker-row${t === activeTicker ? ' advanced-charts__ticker-row--active' : ''}`}
+                  onClick={() => onSelect(t)}
+                >
+                  <span className="advanced-charts__ticker-name">
+                    <span className="advanced-charts__ticker-symbol">{t}</span>
+                    {q?.company_name ? (
+                      <span className="advanced-charts__ticker-company">{q.company_name}</span>
+                    ) : null}
+                  </span>
+                  {q ? (
+                    <span className="advanced-charts__ticker-meta">
+                      <span className="advanced-charts__ticker-price num">{q.price.toFixed(2)}</span>
+                      <span
+                        className={`advanced-charts__ticker-change num ${positive ? 'advanced-charts__ticker-change--good' : 'advanced-charts__ticker-change--bad'}`}
+                      >
+                        {positive ? '+' : ''}
+                        {q.day_change_percent.toFixed(2)}%
+                      </span>
+                    </span>
+                  ) : null}
+                </button>
+              </li>
+            )
+          })}
+        </ul>
+      )}
+    </div>
+  )
+}
+
 export default function AdvancedCharts() {
   const { tickers } = useWatchlist()
+  const [portfolioTickers, setPortfolioTickers] = useState(null)
+  const [trendingTickers, setTrendingTickers] = useState(null)
+  const [analyzedTickers, setAnalyzedTickers] = useState(null)
+  const [quotes, setQuotes] = useState({})
   const [searchParams, setSearchParams] = useSearchParams()
   const [symbol, setSymbolState] = useState(
     () =>
@@ -69,6 +130,50 @@ export default function AdvancedCharts() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  useEffect(() => {
+    let cancelled = false
+    getJSON('/brokerage/portfolio')
+      .then((data) => {
+        if (cancelled) return
+        const symbols = [...new Set(data.positions.map((p) => p.symbol))]
+        setPortfolioTickers(symbols.slice(0, SECTION_LIMIT))
+      })
+      .catch(() => !cancelled && setPortfolioTickers([]))
+    getJSON('/markets/stocks/trending')
+      .then((data) => !cancelled && setTrendingTickers(data.items.map((t) => t.ticker).slice(0, SECTION_LIMIT)))
+      .catch(() => !cancelled && setTrendingTickers([]))
+    getJSON('/track-record')
+      .then((data) => {
+        if (cancelled) return
+        const symbols = [...new Set(data.records.map((r) => r.ticker))]
+        setAnalyzedTickers(symbols.slice(0, SECTION_LIMIT))
+      })
+      .catch(() => !cancelled && setAnalyzedTickers([]))
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  const sidebarTickersKey = [tickers, portfolioTickers, trendingTickers, analyzedTickers]
+    .filter(Boolean)
+    .flat()
+    .join(',')
+
+  useEffect(() => {
+    if (!sidebarTickersKey) return
+    let cancelled = false
+    const symbols = [...new Set(sidebarTickersKey.split(','))]
+    getJSON(`/watchlist?symbols=${symbols.join(',')}`)
+      .then((data) => {
+        if (cancelled) return
+        setQuotes(Object.fromEntries(data.map((q) => [q.ticker, q])))
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [sidebarTickersKey])
 
   useEffect(() => {
     let cancelled = false
@@ -109,24 +214,38 @@ export default function AdvancedCharts() {
   return (
     <div className="advanced-charts">
       <aside className="advanced-charts__sidebar card">
-        <h3 className="advanced-charts__sidebar-title">Watchlist</h3>
-        {tickers.length === 0 ? (
-          <p className="advanced-charts__sidebar-empty">No watchlist tickers yet.</p>
-        ) : (
-          <ul className="advanced-charts__watchlist">
-            {tickers.map((t) => (
-              <li key={t}>
-                <button
-                  type="button"
-                  className={`advanced-charts__watchlist-item${t === activeTicker ? ' advanced-charts__watchlist-item--active' : ''}`}
-                  onClick={() => setSymbol(t)}
-                >
-                  {t}
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
+        <SidebarSection
+          title="Watchlist"
+          tickers={tickers}
+          emptyMessage="No watchlist tickers yet."
+          activeTicker={activeTicker}
+          onSelect={setSymbol}
+          quotes={quotes}
+        />
+        <SidebarSection
+          title="Portfolio"
+          tickers={portfolioTickers}
+          emptyMessage="No holdings connected."
+          activeTicker={activeTicker}
+          onSelect={setSymbol}
+          quotes={quotes}
+        />
+        <SidebarSection
+          title="Trending"
+          tickers={trendingTickers}
+          emptyMessage="No trending data right now."
+          activeTicker={activeTicker}
+          onSelect={setSymbol}
+          quotes={quotes}
+        />
+        <SidebarSection
+          title="Recently Analyzed"
+          tickers={analyzedTickers}
+          emptyMessage="No Stock Team analyses yet."
+          activeTicker={activeTicker}
+          onSelect={setSymbol}
+          quotes={quotes}
+        />
       </aside>
 
       <div className="advanced-charts__main">
