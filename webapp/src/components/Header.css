@@ -1,34 +1,191 @@
 .app-header {
-  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  z-index: 30;
   background: var(--surface-1);
+  border-bottom: 2px solid var(--text-primary);
 }
 
-.app-header__inner {
+/* --- utility strip: date + market pulse + account --- */
+
+.app-header__utility {
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--border);
+}
+
+.app-header__utility-inner {
+  width: 1080px;
+  max-width: 100%;
+  margin: 0 auto;
+  padding: 6px 20px;
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.app-header__date {
+  white-space: nowrap;
+}
+
+.app-header__market {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.app-header__market--open {
+  color: var(--good);
+}
+
+.app-header__market--closed {
+  color: var(--text-muted);
+}
+
+.app-header__market-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.app-header__market--open .app-header__market-dot {
+  box-shadow: 0 0 0 3px var(--good-bg);
+}
+
+.app-header__indices {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.app-header__index {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+  color: var(--text-muted);
+}
+
+.app-header__index:hover {
+  color: var(--text-primary);
+}
+
+.app-header__index-change {
+  font-weight: 600;
+}
+
+.app-header__index-change--good {
+  color: var(--good);
+}
+
+.app-header__index-change--bad {
+  color: var(--critical);
+}
+
+.app-header__index-change--loading {
+  display: inline-block;
+  width: 34px;
+  height: 10px;
+  border-radius: 3px;
+  background: var(--border);
+}
+
+.app-header__account {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-left: auto;
+  text-transform: none;
+}
+
+.app-header__account a {
+  color: var(--text-muted);
+}
+
+.app-header__account a:hover {
+  color: var(--text-primary);
+}
+
+.app-header__account-email {
+  color: var(--text-secondary);
+}
+
+.app-header__account button {
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--text-muted);
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.app-header__account button:hover {
+  color: var(--text-primary);
+}
+
+/* --- masthead: wordmark + nav + search --- */
+
+.app-header__masthead {
   width: 1080px;
   max-width: 100%;
   margin: 0 auto;
   padding: 16px 20px;
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
+  align-items: baseline;
+  gap: 32px;
 }
 
 .app-header__brand {
-  display: flex;
-  align-items: baseline;
-  gap: 7px;
   font-family: var(--display);
   font-weight: 700;
-  font-size: 17px;
+  font-size: 22px;
   letter-spacing: -0.01em;
+  white-space: nowrap;
+}
+
+.app-header__nav-toggle {
+  display: none;
 }
 
 .app-header__nav {
   display: flex;
-  gap: 22px;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0;
   margin-right: auto;
-  margin-left: 32px;
+}
+
+.app-header__nav-item {
+  position: relative;
+  display: flex;
+  padding: 0 14px;
+}
+
+.app-header__nav-item:not(:first-child) {
+  border-left: 1px solid var(--border);
+}
+
+.app-header__nav-item--dropdown > .app-header__nav-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-family: var(--sans);
+}
+
+.app-header__nav-caret {
+  font-size: 9px;
+  color: var(--text-muted);
 }
 
 .app-header__nav-link {
@@ -48,25 +205,15 @@
   border-bottom-color: var(--signal);
 }
 
-.app-header__nav-item {
-  position: relative;
-  display: flex;
-}
-
-.app-header__nav-item--dropdown > .app-header__nav-link {
-  cursor: default;
-}
-
 .app-header__nav-dropdown {
   position: absolute;
   top: 100%;
-  left: 0;
+  left: 14px;
   min-width: 180px;
   padding: 6px;
   margin-top: 4px;
   background: var(--paper);
   border: 1px solid var(--border);
-  border-radius: 4px;
   box-shadow: 0 8px 20px rgba(0, 0, 0, 0.1);
   opacity: 0;
   visibility: hidden;
@@ -93,83 +240,141 @@
 
 .app-header__nav-dropdown-link:hover {
   color: var(--text-primary);
-  background: var(--surface-1);
+  background: var(--surface-2);
 }
 
 .app-header__search {
   display: flex;
-  gap: 8px;
+  align-items: baseline;
+  gap: 6px;
+  flex-shrink: 0;
 }
 
 .app-header__search input {
-  width: 220px;
-  padding: 7px 12px;
-  border: 1px solid var(--border-strong);
-  border-radius: 3px;
-  background: var(--paper);
+  width: 140px;
+  padding: 0 0 4px;
+  border: none;
+  border-bottom: 1px solid var(--border-strong);
+  background: transparent;
   color: var(--text-primary);
   font-family: var(--mono);
   font-size: 13px;
+  transition: border-color 0.12s ease;
 }
 
 .app-header__search input::placeholder {
   font-family: var(--sans);
+  color: var(--text-muted);
 }
 
 .app-header__search input:focus {
-  outline: 2px solid var(--signal);
-  outline-offset: 1px;
+  outline: none;
+  border-bottom-color: var(--signal);
 }
 
 .app-header__search button {
-  padding: 7px 16px;
+  padding: 0 0 4px;
   border: none;
-  border-radius: 3px;
-  background: var(--signal);
-  color: #fff;
-  font-size: 13px;
-  font-weight: 600;
+  border-bottom: 1px solid transparent;
+  background: none;
+  color: var(--signal);
+  font-size: 15px;
+  line-height: 1;
   cursor: pointer;
 }
 
 .app-header__search button:hover {
-  opacity: 0.88;
+  border-bottom-color: var(--signal);
 }
 
-.app-header__account {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  font-size: 13px;
-}
+@media (max-width: 720px) {
+  .app-header__utility-inner {
+    flex-wrap: wrap;
+    row-gap: 4px;
+  }
 
-.app-header__account a {
-  color: var(--text-secondary);
-  text-decoration: none;
-}
+  .app-header__indices {
+    display: none;
+  }
 
-.app-header__account a:hover {
-  color: var(--text-primary);
-}
+  .app-header__masthead {
+    position: relative;
+    gap: 12px;
+  }
 
-.app-header__account-email {
-  color: var(--text-secondary);
-  font-family: var(--mono);
-}
+  .app-header__nav-toggle {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 4px;
+    width: 22px;
+    height: 22px;
+    padding: 0;
+    border: none;
+    background: none;
+    cursor: pointer;
+  }
 
-.app-header__account button {
-  padding: 6px 12px;
-  border: 1px solid var(--border-strong);
-  border-radius: 3px;
-  background: transparent;
-  color: var(--text-secondary);
-  font-size: 13px;
-  white-space: nowrap;
-  flex-shrink: 0;
-  cursor: pointer;
-}
+  .app-header__nav-toggle span {
+    display: block;
+    width: 100%;
+    height: 2px;
+    background: var(--text-primary);
+  }
 
-.app-header__account button:hover {
-  color: var(--text-primary);
-  border-color: var(--text-secondary);
+  .app-header__nav {
+    display: none;
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0;
+    margin: 0;
+    background: var(--surface-1);
+    border-bottom: 2px solid var(--text-primary);
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.1);
+  }
+
+  .app-header__nav--open {
+    display: flex;
+  }
+
+  .app-header__nav-item {
+    padding: 0 20px;
+  }
+
+  .app-header__nav-item:not(:first-child) {
+    border-left: none;
+    border-top: 1px solid var(--border);
+  }
+
+  .app-header__nav-link {
+    width: 100%;
+    padding: 12px 0;
+  }
+
+  .app-header__nav-item--dropdown > .app-header__nav-link {
+    justify-content: space-between;
+  }
+
+  .app-header__nav-dropdown {
+    position: static;
+    opacity: 1;
+    visibility: visible;
+    transform: none;
+    margin: 0 0 8px;
+    padding: 0;
+    border: none;
+    box-shadow: none;
+  }
+
+  .app-header__nav-dropdown-link {
+    padding: 10px 0 10px 14px;
+  }
+
+  .app-header__search {
+    margin-left: auto;
+  }
 }
