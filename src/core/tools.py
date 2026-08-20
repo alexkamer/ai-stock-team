@@ -800,6 +800,7 @@ def get_market_news(tickers: list[str], limit: int = 8) -> list[dict]:
                     "published_at": content.get("pubDate", ""),
                     "thumbnail": best["url"] if best else None,
                     "ticker": ticker,
+                    "is_video": content.get("contentType") == "VIDEO",
                     "_editors_pick": bool((content.get("metadata") or {}).get("editorsPick")),
                 }
             )
@@ -834,7 +835,7 @@ def get_market_news(tickers: list[str], limit: int = 8) -> list[dict]:
         article["related_tickers"] = [
             {"ticker": t, "day_change_percent": day_changes.get(t)} for t in article["related_tickers"]
         ]
-        article["likely_unreadable"] = article["publisher"] in LOW_READABILITY_PUBLISHERS
+        article["likely_unreadable"] = article["is_video"] or article["publisher"] in LOW_READABILITY_PUBLISHERS
 
     return articles
 

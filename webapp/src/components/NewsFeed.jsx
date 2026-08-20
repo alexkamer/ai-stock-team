@@ -57,11 +57,14 @@ function NewsRow({ article, showTicker, summarizable }) {
   return (
     <div className="news-row">
       <a href={article.url} target="_blank" rel="noreferrer" className="news-row__link">
-        {article.thumbnail ? (
-          <img className="news-row__thumb" src={article.thumbnail} alt="" loading="lazy" />
-        ) : (
-          <div className="news-row__thumb news-row__thumb--empty" aria-hidden="true" />
-        )}
+        <div className="news-row__thumb-wrap">
+          {article.thumbnail ? (
+            <img className="news-row__thumb" src={article.thumbnail} alt="" loading="lazy" />
+          ) : (
+            <div className="news-row__thumb news-row__thumb--empty" aria-hidden="true" />
+          )}
+          {article.is_video && <span className="news-row__play" aria-hidden="true" />}
+        </div>
         <div className="news-row__body">
           <p className="news-row__title">{article.title}</p>
           {article.summary && <p className="news-row__preview">{article.summary}</p>}
@@ -79,7 +82,9 @@ function NewsRow({ article, showTicker, summarizable }) {
       </a>
       {summarizable && (
         <div className="news-row__extra">
-          {article.likely_unreadable ? (
+          {article.is_video ? (
+            <p className="news-row__summary news-row__summary--muted">Video — watch on {article.publisher || 'Yahoo Finance'}.</p>
+          ) : article.likely_unreadable ? (
             <p className="news-row__summary news-row__summary--error">Full article isn't reliably readable here.</p>
           ) : (
             <ArticleSummary url={article.url} />

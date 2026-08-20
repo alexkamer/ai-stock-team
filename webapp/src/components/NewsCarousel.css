@@ -28,6 +28,28 @@
   background: linear-gradient(180deg, rgba(0, 0, 0, 0) 35%, rgba(0, 0, 0, 0.78) 100%);
 }
 
+.news-carousel__play {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background: rgba(15, 16, 19, 0.55);
+}
+
+.news-carousel__play::after {
+  content: '';
+  border-style: solid;
+  border-width: 13px 0 13px 20px;
+  border-color: transparent transparent transparent #fff;
+  margin-left: 3px;
+}
+
 .news-carousel__body {
   position: absolute;
   left: 0;

@@ -52,8 +52,9 @@ export default function NewsCarousel({ articles }) {
         style={{ backgroundImage: current.thumbnail ? `url(${current.thumbnail})` : 'none' }}
       >
         <div className="news-carousel__scrim" />
+        {current.is_video && <span className="news-carousel__play" aria-hidden="true" />}
         <div className="news-carousel__body">
-          <span className="news-carousel__eyebrow">Top story</span>
+          <span className="news-carousel__eyebrow">{current.is_video ? 'Top video' : 'Top story'}</span>
           <h3 className="news-carousel__title">{current.title}</h3>
           {current.summary && <p className="news-carousel__preview">{current.summary}</p>}
           <span className="news-carousel__meta">
