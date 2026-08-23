@@ -2,6 +2,23 @@
 
 An AI-powered stock research app built with [pydantic-ai](https://ai.pydantic.dev/) and [yfinance](https://github.com/ranaroussi/yfinance), running on Claude via AWS Bedrock. It ships as a one-shot CLI, a FastAPI backend, and a React web app.
 
+| Dashboard | Ticker Detail | Stock Team Analysis |
+|---|---|---|
+| ![Dashboard](docs/dashboard.png) | ![Ticker Detail](docs/ticker-detail.png) | ![Stock Team Analysis](docs/team-analysis.png) |
+
+## Table of contents
+
+- [What's here](#whats-here)
+- [Tech stack](#tech-stack)
+- [Setup](#setup)
+  - [Configuring the AI model](#configuring-the-ai-model)
+  - [Connecting SnapTrade](#connecting-snaptrade)
+- [Running it](#running-it)
+- [Tour of the web app](#tour-of-the-web-app)
+- [Tests](#tests)
+- [Project layout](#project-layout)
+- [License](#license)
+
 ## What's here
 
 - **CLI** — point it at a ticker, get a structured snapshot: price, market cap, P/E, sentiment, and a short summary.
@@ -251,3 +268,7 @@ webapp/       # React + Vite frontend
 tests/        # pytest suite
 scripts/      # one-off diagnostics, e.g. news_scrape_coverage.py
 ```
+
+## License
+
+[MIT](LICENSE)
