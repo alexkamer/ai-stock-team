@@ -5,6 +5,10 @@ build/
 dist/
 wheels/
 *.egg-info
+.pytest_cache/
+
+# Claude Code local settings/state
+.claude/
 
 # Lessons folder
 lessons/
