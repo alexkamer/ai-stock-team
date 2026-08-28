@@ -7,6 +7,7 @@ export const brokerageCache = {
   portfolio: null,
   updatedAt: null,
   positionsByAccount: {},
+  balancesByAccount: {},
   ordersByAccount: {},
   newsByAccount: {},
 }

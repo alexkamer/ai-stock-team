@@ -58,6 +58,7 @@ export default function PortfolioOverview({ portfolio, connections, updatedAt })
   const [afterHours, setAfterHours] = useState(false)
   const [accountId, setAccountId] = useState('all')
   const [positionsByAccount, setPositionsByAccountState] = useState(() => brokerageCache.positionsByAccount)
+  const [balancesByAccount, setBalancesByAccountState] = useState(() => brokerageCache.balancesByAccount)
   const [ordersByAccount, setOrdersByAccountState] = useState(() => brokerageCache.ordersByAccount)
   const [newsByAccount, setNewsByAccountState] = useState(() => brokerageCache.newsByAccount)
 
@@ -65,6 +66,14 @@ export default function PortfolioOverview({ portfolio, connections, updatedAt })
     setPositionsByAccountState((prev) => {
       const next = typeof updater === 'function' ? updater(prev) : updater
       brokerageCache.positionsByAccount = next
+      return next
+    })
+  }, [])
+
+  const setBalancesByAccount = useCallback((updater) => {
+    setBalancesByAccountState((prev) => {
+      const next = typeof updater === 'function' ? updater(prev) : updater
+      brokerageCache.balancesByAccount = next
       return next
     })
   }, [])
@@ -108,13 +117,16 @@ export default function PortfolioOverview({ portfolio, connections, updatedAt })
         getJSON(`/brokerage/accounts/${account.id}/positions`).then((positions) =>
           setPositionsByAccount((prev) => ({ ...prev, [account.id]: positions }))
         )
+        getJSON(`/brokerage/accounts/${account.id}/balances`).then((balances) =>
+          setBalancesByAccount((prev) => ({ ...prev, [account.id]: balances }))
+        )
         getJSON(`/brokerage/accounts/${account.id}/transactions`).then((orders) =>
           setOrdersByAccount((prev) => ({ ...prev, [account.id]: orders }))
         )
       })
     })
     return () => cancelIdle(handle)
-  }, [accounts, setOrdersByAccount, setPositionsByAccount])
+  }, [accounts, setOrdersByAccount, setPositionsByAccount, setBalancesByAccount])
 
   useEffect(() => {
     if (accountId === 'all') return
@@ -123,9 +135,12 @@ export default function PortfolioOverview({ portfolio, connections, updatedAt })
       getJSON(`/brokerage/accounts/${accountId}/positions`).then((positions) =>
         setPositionsByAccount((prev) => ({ ...prev, [accountId]: positions }))
       )
+      getJSON(`/brokerage/accounts/${accountId}/balances`).then((balances) =>
+        setBalancesByAccount((prev) => ({ ...prev, [accountId]: balances }))
+      )
     }, PRICE_REFRESH_INTERVAL_MS)
     return () => clearInterval(interval)
-  }, [accountId, setPositionsByAccount])
+  }, [accountId, setPositionsByAccount, setBalancesByAccount])
 
   const positionsForNews = accountId === 'all' ? portfolio?.positions : positionsByAccount[accountId]
 
@@ -155,33 +170,35 @@ export default function PortfolioOverview({ portfolio, connections, updatedAt })
     )
   }
 
-  const rows = portfolio.positions.map(derivePositionRow)
+  const positions = accountId === 'all' ? portfolio.positions : positionsByAccount[accountId]
+  const isLoadingPositions = accountId !== 'all' && !positionsByAccount[accountId]
+  const orders = ordersByAccount[accountId]
+  const isLoadingOrders = tab === 'orders' && !orders
+
+  const rows = (positions ?? []).map(derivePositionRow)
+  const totalValue =
+    accountId === 'all' ? portfolio.total_value : rows.reduce((sum, row) => sum + (row.value ?? 0), 0)
+  const totalCash =
+    accountId === 'all'
+      ? portfolio.balances.reduce((sum, balance) => sum + balance.cash, 0)
+      : (balancesByAccount[accountId] ?? []).reduce((sum, balance) => sum + balance.cash, 0)
   const knownDayChangeRows = rows.filter((row) => row.dayChangeDollar != null)
   const dayChangeDollar = knownDayChangeRows.length
     ? knownDayChangeRows.reduce((sum, row) => sum + row.dayChangeDollar, 0)
     : null
-  const previousTotalValue = dayChangeDollar != null ? portfolio.total_value - dayChangeDollar : null
+  const previousTotalValue = dayChangeDollar != null ? totalValue - dayChangeDollar : null
   const dayChangePercent =
     dayChangeDollar != null && previousTotalValue ? (dayChangeDollar / previousTotalValue) * 100 : null
-  const totalCash = portfolio.balances.reduce((sum, balance) => sum + balance.cash, 0)
   const dayChangeSign = dayChangeDollar == null ? '' : dayChangeDollar >= 0 ? 'good' : 'bad'
 
   const knownExtendedHoursRows = rows.filter((row) => row.extendedHoursDollarChange != null)
   const extendedHoursDollar = knownExtendedHoursRows.length
     ? knownExtendedHoursRows.reduce((sum, row) => sum + row.extendedHoursDollarChange, 0)
     : null
-  const extendedHoursPercent =
-    extendedHoursDollar != null && portfolio.total_value
-      ? (extendedHoursDollar / portfolio.total_value) * 100
-      : null
+  const extendedHoursPercent = extendedHoursDollar != null && totalValue ? (extendedHoursDollar / totalValue) * 100 : null
   const extendedHoursSession = knownExtendedHoursRows[0]?.extendedHoursSession ?? null
   const extendedHoursSign = extendedHoursDollar == null ? '' : extendedHoursDollar >= 0 ? 'good' : 'bad'
-  const extendedHoursTotalValue = extendedHoursDollar != null ? portfolio.total_value + extendedHoursDollar : null
-
-  const positions = accountId === 'all' ? portfolio.positions : positionsByAccount[accountId]
-  const isLoadingPositions = accountId !== 'all' && !positionsByAccount[accountId]
-  const orders = ordersByAccount[accountId]
-  const isLoadingOrders = tab === 'orders' && !orders
+  const extendedHoursTotalValue = extendedHoursDollar != null ? totalValue + extendedHoursDollar : null
 
   async function generateDigest() {
     setDigest('loading')
@@ -195,8 +212,12 @@ export default function PortfolioOverview({ portfolio, connections, updatedAt })
   return (
     <div className="portfolio-overview">
       <div className="portfolio-overview__hero">
-        <span className="portfolio-overview__value">{portfolio.total_value.toFixed(2)}</span>
-        {dayChangeDollar != null && (
+        {isLoadingPositions ? (
+          <Skeleton width="220px" height="3rem" />
+        ) : (
+          <span className="portfolio-overview__value">{totalValue.toFixed(2)}</span>
+        )}
+        {!isLoadingPositions && dayChangeDollar != null && (
           <span className={`portfolio-overview__change portfolio-overview__change--${dayChangeSign}`}>
             {formatSigned(dayChangeDollar)} ({formatSigned(dayChangePercent)}%) today
           </span>
