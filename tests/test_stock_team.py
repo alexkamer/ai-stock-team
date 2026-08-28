@@ -24,15 +24,20 @@ from core.track_record import log_verdict
 
 
 @pytest.fixture
-def db():
+def db_factory():
+    """Yields (session_factory, user_id) rather than one shared session -
+    run_team_scan gives each ticker its own session via a factory, so tests
+    need one bound to this in-memory engine rather than a single Session
+    instance."""
     engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
     Base.metadata.create_all(bind=engine)
-    session = sessionmaker(bind=engine, autoflush=False, autocommit=False)()
+    factory = sessionmaker(bind=engine, autoflush=False, autocommit=False)
+    setup_session = factory()
     user = User(email="a@example.com", password_hash="x")
-    session.add(user)
-    session.commit()
-    yield session, user.id
-    session.close()
+    setup_session.add(user)
+    setup_session.commit()
+    yield factory, user.id
+    setup_session.close()
 
 
 @pytest.fixture(autouse=True)
@@ -297,10 +302,10 @@ def test_ownership_instruction_variants():
 
 
 @pytest.mark.asyncio
-async def test_run_team_scan_reuses_todays_verdict_and_runs_new_tickers(db):
-    session, user_id = db
+async def test_run_team_scan_reuses_todays_verdict_and_runs_new_tickers(db_factory):
+    factory, user_id = db_factory
     log_verdict(
-        session,
+        factory(),
         user_id,
         "AAPL",
         250.0,
@@ -345,19 +350,24 @@ async def test_run_team_scan_reuses_todays_verdict_and_runs_new_tickers(db):
         mock_ticker_cls.return_value.news = [{"content": {"title": "Nvidia beats estimates"}}]
         mock_ticker_cls.return_value.history.return_value = _ONE_YEAR_HISTORY
 
-        results = [r async for r in stock_team.run_team_scan(["AAPL", "NVDA"], session, user_id)]
+        results = {
+            r["ticker"]: r
+            async for r in stock_team.run_team_scan(["AAPL", "NVDA"], user_id, session_factory=factory)
+        }
 
-    assert results[0] == {
+    assert results["AAPL"] == {
         "ticker": "AAPL",
         "verdict": "sell",
         "predicted_price": 200.0,
         "predicted_horizon": "1mo",
         "reused": True,
     }
-    assert results[1]["ticker"] == "NVDA"
-    assert results[1]["verdict"] == "buy"
-    assert results[1]["reused"] is False
+    assert results["NVDA"]["verdict"] == "buy"
+    assert results["NVDA"]["reused"] is False
 
-    logged_nvda = session.execute(select(TeamVerdictRecord).where(TeamVerdictRecord.ticker == "NVDA")).scalars().all()
+    check_session = factory()
+    logged_nvda = check_session.execute(
+        select(TeamVerdictRecord).where(TeamVerdictRecord.ticker == "NVDA")
+    ).scalars().all()
     assert len(logged_nvda) == 1
     assert logged_nvda[0].verdict == "buy"

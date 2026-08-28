@@ -328,11 +328,12 @@ def get_private_company_screen(screen: str, limit: int = 6) -> list[dict]:
 
 
 @app.get("/tickers/team-scan")
-async def get_team_scan(user: User = Depends(get_current_user), db: DbSession = Depends(get_db)) -> StreamingResponse:
+async def get_team_scan(user: User = Depends(get_current_user)) -> StreamingResponse:
     """Runs the Stock Team pipeline over a candidate pool pulled from cheap,
     no-LLM screens (see _scan_candidates), so the user can discover buy
     ideas outside their own watchlist/holdings instead of only re-scoring
-    tickers they already picked.
+    tickers they already picked. No `db` dependency here - run_team_scan
+    gives each ticker its own session so a few can run concurrently.
 
     Registered before /tickers/{ticker} below - FastAPI matches routes in
     registration order, and a dynamic {ticker} route would otherwise catch
@@ -342,7 +343,7 @@ async def get_team_scan(user: User = Depends(get_current_user), db: DbSession = 
     async def event_source():
         yield format_sse("candidates", json.dumps({"tickers": candidates}))
         try:
-            async for result in run_team_scan(candidates, db, user.id):
+            async for result in run_team_scan(candidates, user.id):
                 yield format_sse("result", json.dumps(result))
         except ValueError as e:
             yield format_sse("error", json.dumps({"detail": str(e)}))

@@ -297,35 +297,27 @@ async def get_team_analysis(
     )
 
 
-async def run_team_scan(tickers: list[str], db, user_id: int):
-    """Runs get_team_analysis for each ticker in turn - not concurrently,
-    since every call shares the one request-scoped db session, which isn't
-    safe for concurrent use from multiple tasks at once. Reuses today's
-    already-logged verdict when one exists instead of re-running the (6
-    specialists + synthesizer) pipeline, so re-scanning the same candidate
-    list later the same day is cheap. Yields one result dict per ticker as
-    it finishes, so a caller can stream progress instead of waiting for the
-    whole scan; a ticker that errors is reported and skipped rather than
-    aborting the rest of the scan."""
-    for ticker in tickers:
+_SCAN_MAX_CONCURRENCY = 3
+
+
+async def _run_scan_one(ticker: str, user_id: int, session_factory) -> dict:
+    """One ticker's slice of run_team_scan - own db session (not the
+    caller's), since several of these can now run concurrently and a
+    SQLAlchemy Session isn't safe for concurrent use from multiple tasks."""
+    db = session_factory()
+    try:
         existing = await asyncio.to_thread(get_todays_verdict, db, user_id, ticker)
         if existing is not None:
-            yield {
+            return {
                 "ticker": ticker,
                 "verdict": existing.verdict,
                 "predicted_price": existing.predicted_price,
                 "predicted_horizon": existing.predicted_horizon,
                 "reused": True,
             }
-            continue
 
-        try:
-            analysis = await get_team_analysis(ticker, db=db, user_id=user_id)
-            price_at_call = await asyncio.to_thread(get_stock_price, ticker)
-        except Exception as e:
-            yield {"ticker": ticker, "error": str(e)}
-            continue
-
+        analysis = await get_team_analysis(ticker, db=db, user_id=user_id)
+        price_at_call = await asyncio.to_thread(get_stock_price, ticker)
         await asyncio.to_thread(
             log_verdict,
             db,
@@ -335,10 +327,47 @@ async def run_team_scan(tickers: list[str], db, user_id: int):
             analysis.verdict,
             specialist_calls=analysis.specialist_calls,
         )
-        yield {
+        return {
             "ticker": ticker,
             "verdict": analysis.verdict.verdict,
             "predicted_price": analysis.verdict.predicted_price,
             "predicted_horizon": analysis.verdict.predicted_horizon,
             "reused": False,
         }
+    except Exception as e:
+        # Reported and skipped rather than aborting the rest of the scan -
+        # one bad ticker (thin data, a model hiccup) shouldn't sink the run.
+        return {"ticker": ticker, "error": str(e)}
+    finally:
+        db.close()
+
+
+async def run_team_scan(
+    tickers: list[str],
+    user_id: int,
+    session_factory=None,
+    max_concurrency: int = _SCAN_MAX_CONCURRENCY,
+):
+    """Runs get_team_analysis for up to `max_concurrency` tickers at once
+    (each on its own db session - see _run_scan_one), reusing today's
+    already-logged verdict when one exists instead of re-running the (6
+    specialists + synthesizer) pipeline, so re-scanning the same candidate
+    list later the same day is cheap. Yields one result dict per ticker as
+    it finishes - not necessarily in `tickers` order, since faster tickers
+    (reused, or just quicker to analyze) can complete before slower ones -
+    so a caller can stream progress instead of waiting for the whole scan.
+    `session_factory` defaults to core.db.SessionLocal; tests override it to
+    point at an in-memory engine."""
+    if session_factory is None:
+        from core.db import SessionLocal  # local import - avoids a hard dependency for callers that override it
+
+        session_factory = SessionLocal
+
+    semaphore = asyncio.Semaphore(max_concurrency)
+
+    async def _bounded(ticker: str) -> dict:
+        async with semaphore:
+            return await _run_scan_one(ticker, user_id, session_factory)
+
+    for task in asyncio.as_completed([asyncio.create_task(_bounded(t)) for t in tickers]):
+        yield await task
