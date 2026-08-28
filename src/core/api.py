@@ -102,7 +102,19 @@ PRIVATE_COMPANY_SCREENS = {
 # Discovery candidate pool for the Buy Scan (see get_team_scan below): cheap,
 # no-LLM screens combined and deduped, so the expensive multi-agent pass only
 # runs over a bounded, plausibly-interesting set instead of the whole market.
-_SCAN_SCREENS = [get_most_active_tickers, get_top_gainers, get_trending_tickers]
+# Deliberately not just "already hot" screens (most-active/gainers/trending) -
+# those bias the pool toward names that already moved, which the synthesizer
+# then often (correctly) rates Hold on valuation/risk grounds. Losers and
+# long-run historical performers add pullback/quality candidates that don't
+# share that bias, so the pool isn't structurally stacked against ever
+# finding a Buy.
+_SCAN_SCREENS = [
+    get_most_active_tickers,
+    get_top_gainers,
+    get_top_losers,
+    get_trending_tickers,
+    get_best_historical_performers,
+]
 _SCAN_CANDIDATES_PER_SCREEN = 15
 _SCAN_CANDIDATES_LIMIT = 20
 
