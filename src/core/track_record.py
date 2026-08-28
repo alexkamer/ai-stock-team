@@ -34,6 +34,19 @@ def _today() -> date:
     return datetime.now(timezone.utc).date()
 
 
+def get_todays_verdict(db: DbSession, user_id: int, ticker: str) -> TeamVerdictRecord | None:
+    """The row log_verdict would no-op against, exposed so callers (e.g. a
+    scan across many tickers) can reuse an already-logged verdict instead of
+    re-running the multi-agent pipeline for a ticker already called today."""
+    return db.execute(
+        select(TeamVerdictRecord).where(
+            TeamVerdictRecord.user_id == user_id,
+            TeamVerdictRecord.ticker == ticker,
+            TeamVerdictRecord.call_date == _today(),
+        )
+    ).scalar_one_or_none()
+
+
 def log_verdict(
     db: DbSession,
     user_id: int,
@@ -46,15 +59,7 @@ def log_verdict(
     regenerating later the same day just refreshes the on-screen view, it
     doesn't create a second row (and the freshly-run specialists' signals
     aren't persisted either, for the same reason)."""
-    today = _today()
-    already_logged = db.execute(
-        select(TeamVerdictRecord.id).where(
-            TeamVerdictRecord.user_id == user_id,
-            TeamVerdictRecord.ticker == ticker,
-            TeamVerdictRecord.call_date == today,
-        )
-    ).first()
-    if already_logged:
+    if get_todays_verdict(db, user_id, ticker) is not None:
         return
 
     record = TeamVerdictRecord(
@@ -66,7 +71,7 @@ def log_verdict(
         price_at_call=price_at_call,
         predicted_price=verdict.predicted_price,
         predicted_horizon=verdict.predicted_horizon,
-        call_date=today,
+        call_date=_today(),
     )
     db.add(record)
     db.flush()  # assigns record.id, needed by the FK below

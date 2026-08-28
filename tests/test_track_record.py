@@ -16,7 +16,7 @@ from sqlalchemy.pool import StaticPool
 from core.db import Base
 from core.models import TeamVerdict
 from core.models_db import SpecialistCallRecord, TeamVerdictRecord, User
-from core.track_record import aggregate_stats, log_verdict, score_record, specialist_stats
+from core.track_record import aggregate_stats, get_todays_verdict, log_verdict, score_record, specialist_stats
 
 
 @pytest.fixture
@@ -112,6 +112,20 @@ def test_log_verdict_skips_specialist_calls_on_same_day_noop(db):
     rows = session.execute(select(SpecialistCallRecord)).scalars().all()
     assert len(rows) == 1
     assert rows[0].signal == "positive"
+
+
+def test_get_todays_verdict_returns_none_when_not_logged(db):
+    session, user_id = db
+    assert get_todays_verdict(session, user_id, "NVDA") is None
+
+
+def test_get_todays_verdict_returns_the_logged_row(db):
+    session, user_id = db
+    log_verdict(session, user_id, "NVDA", 200.0, _verdict(verdict="sell"))
+
+    found = get_todays_verdict(session, user_id, "NVDA")
+    assert found is not None
+    assert found.verdict == "sell"
 
 
 def _record(call_date, price_at_call=200.0, verdict="buy", predicted_price=None, predicted_horizon=None):

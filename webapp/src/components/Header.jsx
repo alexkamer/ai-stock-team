@@ -23,6 +23,7 @@ const NAV_LINKS = [
       { to: '/research/advanced-charts', label: 'Advanced charts' },
     ],
   },
+  { to: '/scan', label: 'Buy Scan', end: true },
   { to: '/chat', label: 'Chat', end: true },
   { to: '/brokerage', label: 'Brokerage', end: true },
   { to: '/track-record', label: 'Track Record', end: true },

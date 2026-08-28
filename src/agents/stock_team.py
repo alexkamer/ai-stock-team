@@ -31,6 +31,7 @@ from core.tools import (
     get_ticker_overview,
     get_ticker_stats,
 )
+from core.track_record import get_todays_verdict, log_verdict
 
 
 @dataclass
@@ -50,34 +51,42 @@ class TeamDeps:
     specialist_calls: list[dict] = field(default_factory=list)
 
 
-# retries=3 (vs. config.yaml's default of 1) gives check_findings_are_grounded
-# below room for a borderline false positive (a legitimately-derived stat it
-# doesn't recognize) without exhausting the budget and hard-failing the run.
-_GROUNDED_RETRIES = 3
+# retries=3 (vs. config.yaml's default of 1): for the specialists, gives
+# check_findings_are_grounded room for a borderline false positive (a
+# legitimately-derived stat it doesn't recognize); for the synthesizer
+# (below), covers an occasional schema-invalid TeamVerdict on the first try.
+# Either way, the default of 1 leaves no room for a single hiccup before
+# hard-failing the whole run.
+_AGENT_RETRIES = 3
 
 fundamentals_agent = load_agent(
-    tools=[get_stock_price, get_market_cap, get_pe_ratio], output_type=SpecialistFinding, retries=_GROUNDED_RETRIES
+    tools=[get_stock_price, get_market_cap, get_pe_ratio], output_type=SpecialistFinding, retries=_AGENT_RETRIES
 )
 sentiment_agent = load_agent(
-    tools=[get_news_headlines], output_type=SpecialistFinding, retries=_GROUNDED_RETRIES
+    tools=[get_news_headlines], output_type=SpecialistFinding, retries=_AGENT_RETRIES
 )
 technicals_agent = load_agent(
     tools=[get_technical_indicators, get_price_performance, get_ticker_stats],
     output_type=SpecialistFinding,
-    retries=_GROUNDED_RETRIES,
+    retries=_AGENT_RETRIES,
 )
 valuation_agent = load_agent(
     tools=[get_ticker_overview, get_price_ratios, get_similar_tickers],
     output_type=SpecialistFinding,
-    retries=_GROUNDED_RETRIES,
+    retries=_AGENT_RETRIES,
 )
 risk_agent = load_agent(
     tools=[get_technical_indicators, get_ticker_stats, get_price_performance],
     output_type=SpecialistFinding,
-    retries=_GROUNDED_RETRIES,
+    retries=_AGENT_RETRIES,
 )
 portfolio_fit_agent = load_agent()
-synthesizer = load_agent(deps_type=TeamDeps)
+# Same retries budget as the specialists above, but for a different reason:
+# this agent has no output_validator, so a retry here only ever covers the
+# model failing to produce a schema-valid TeamVerdict on the first try (e.g.
+# a predicted_price inconsistent with the verdict direction) - without it,
+# any single validation hiccup fails the whole run with no second chance.
+synthesizer = load_agent(deps_type=TeamDeps, retries=_AGENT_RETRIES)
 
 # Every tool-using specialist gets the same numeric-grounding check (a no-op
 # for sentiment_agent, whose tool returns headline text with no numbers to
@@ -286,3 +295,50 @@ async def get_team_analysis(
     return TeamAnalysisResult(
         verdict=verdict, is_held=is_held, usage=result.usage, specialist_calls=deps.specialist_calls
     )
+
+
+async def run_team_scan(tickers: list[str], db, user_id: int):
+    """Runs get_team_analysis for each ticker in turn - not concurrently,
+    since every call shares the one request-scoped db session, which isn't
+    safe for concurrent use from multiple tasks at once. Reuses today's
+    already-logged verdict when one exists instead of re-running the (6
+    specialists + synthesizer) pipeline, so re-scanning the same candidate
+    list later the same day is cheap. Yields one result dict per ticker as
+    it finishes, so a caller can stream progress instead of waiting for the
+    whole scan; a ticker that errors is reported and skipped rather than
+    aborting the rest of the scan."""
+    for ticker in tickers:
+        existing = await asyncio.to_thread(get_todays_verdict, db, user_id, ticker)
+        if existing is not None:
+            yield {
+                "ticker": ticker,
+                "verdict": existing.verdict,
+                "predicted_price": existing.predicted_price,
+                "predicted_horizon": existing.predicted_horizon,
+                "reused": True,
+            }
+            continue
+
+        try:
+            analysis = await get_team_analysis(ticker, db=db, user_id=user_id)
+            price_at_call = await asyncio.to_thread(get_stock_price, ticker)
+        except Exception as e:
+            yield {"ticker": ticker, "error": str(e)}
+            continue
+
+        await asyncio.to_thread(
+            log_verdict,
+            db,
+            user_id,
+            ticker,
+            price_at_call,
+            analysis.verdict,
+            specialist_calls=analysis.specialist_calls,
+        )
+        yield {
+            "ticker": ticker,
+            "verdict": analysis.verdict.verdict,
+            "predicted_price": analysis.verdict.predicted_price,
+            "predicted_horizon": analysis.verdict.predicted_horizon,
+            "reused": False,
+        }

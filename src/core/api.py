@@ -26,7 +26,7 @@ from sqlalchemy.orm import Session as DbSession
 
 from agents.chat import send_message
 from agents.main import get_article_summary, get_sentiment_streaming
-from agents.stock_team import get_team_analysis
+from agents.stock_team import get_team_analysis, run_team_scan
 from core.auth import get_current_user
 from core.db import get_db
 from core.models_db import TeamVerdictRecord, User
@@ -98,6 +98,25 @@ OPTIONS_SCREENS = {
 PRIVATE_COMPANY_SCREENS = {
     "highest-valuation": get_highest_valuation_private_companies,
 }
+
+# Discovery candidate pool for the Buy Scan (see get_team_scan below): cheap,
+# no-LLM screens combined and deduped, so the expensive multi-agent pass only
+# runs over a bounded, plausibly-interesting set instead of the whole market.
+_SCAN_SCREENS = [get_most_active_tickers, get_top_gainers, get_trending_tickers]
+_SCAN_CANDIDATES_PER_SCREEN = 15
+_SCAN_CANDIDATES_LIMIT = 20
+
+
+def _scan_candidates() -> list[str]:
+    seen = []
+    for fetcher in _SCAN_SCREENS:
+        items, _ = fetcher(limit=_SCAN_CANDIDATES_PER_SCREEN)
+        for item in items:
+            ticker = item["ticker"]
+            if ticker not in seen:
+                seen.append(ticker)
+    return seen[:_SCAN_CANDIDATES_LIMIT]
+
 
 app = FastAPI(title="AI Stock Team API")
 app.include_router(auth_router.router)
@@ -306,6 +325,29 @@ def get_private_company_screen(screen: str, limit: int = 6) -> list[dict]:
     (highest-valuation), for the dedicated /markets/private-companies/{screen} page.
     """
     return _screen_or_404(PRIVATE_COMPANY_SCREENS, screen, limit)
+
+
+@app.get("/tickers/team-scan")
+async def get_team_scan(user: User = Depends(get_current_user), db: DbSession = Depends(get_db)) -> StreamingResponse:
+    """Runs the Stock Team pipeline over a candidate pool pulled from cheap,
+    no-LLM screens (see _scan_candidates), so the user can discover buy
+    ideas outside their own watchlist/holdings instead of only re-scoring
+    tickers they already picked.
+
+    Registered before /tickers/{ticker} below - FastAPI matches routes in
+    registration order, and a dynamic {ticker} route would otherwise catch
+    this path first and treat "team-scan" as a ticker symbol."""
+    candidates = _scan_candidates()
+
+    async def event_source():
+        yield format_sse("candidates", json.dumps({"tickers": candidates}))
+        try:
+            async for result in run_team_scan(candidates, db, user.id):
+                yield format_sse("result", json.dumps(result))
+        except ValueError as e:
+            yield format_sse("error", json.dumps({"detail": str(e)}))
+
+    return StreamingResponse(event_source(), media_type="text/event-stream")
 
 
 @app.get("/tickers/{ticker}/history")

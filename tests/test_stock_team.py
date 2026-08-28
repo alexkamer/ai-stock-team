@@ -10,10 +10,29 @@ from unittest.mock import patch
 import pandas as pd
 import pytest
 from pydantic_ai.models.test import TestModel
+from sqlalchemy import create_engine, select
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
 
 from agents import stock_team
 from core import tools
+from core.db import Base
+from core.models import TeamVerdict
+from core.models_db import TeamVerdictRecord, User
 from core.portfolio_context import PortfolioContext
+from core.track_record import log_verdict
+
+
+@pytest.fixture
+def db():
+    engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
+    Base.metadata.create_all(bind=engine)
+    session = sessionmaker(bind=engine, autoflush=False, autocommit=False)()
+    user = User(email="a@example.com", password_hash="x")
+    session.add(user)
+    session.commit()
+    yield session, user.id
+    session.close()
 
 
 @pytest.fixture(autouse=True)
@@ -275,3 +294,70 @@ def test_ownership_instruction_variants():
     assert "isn't connected" in stock_team._ownership_instruction("NVDA", None)
     assert "Choose 'buy'" in stock_team._ownership_instruction("NVDA", True)
     assert "never 'sell'" in stock_team._ownership_instruction("NVDA", False)
+
+
+@pytest.mark.asyncio
+async def test_run_team_scan_reuses_todays_verdict_and_runs_new_tickers(db):
+    session, user_id = db
+    log_verdict(
+        session,
+        user_id,
+        "AAPL",
+        250.0,
+        TeamVerdict(
+            ticker="AAPL",
+            verdict="sell",
+            key_factors=["Already called today."],
+            reasoning="Already called today.",
+            predicted_price=200.0,
+            predicted_horizon="1mo",
+        ),
+    )
+
+    synthesizer_model = TestModel(
+        custom_output_args={
+            "ticker": "NVDA",
+            "verdict": "buy",
+            "key_factors": ["Fundamentals: strong."],
+            "reasoning": "Strong fundamentals.",
+            "predicted_price": 145.0,
+            "predicted_horizon": "1mo",
+        }
+    )
+
+    with (
+        ExitStack() as stack,
+        patch("core.tools.yf.Ticker") as mock_ticker_cls,
+    ):
+        for ctx in _team_analysis_context_managers(synthesizer_model):
+            stack.enter_context(ctx)
+        mock_ticker_cls.return_value.info = {
+            "currentPrice": 132.45,
+            "marketCap": 4.78e12,
+            "trailingPE": 30.3,
+            "beta": 1.05,
+            "sector": "Technology",
+            "industry": "Semiconductors",
+            "regularMarketChangePercent": 1.2,
+            "regularMarketChange": 1.6,
+            "hasPrePostMarketData": False,
+        }
+        mock_ticker_cls.return_value.news = [{"content": {"title": "Nvidia beats estimates"}}]
+        mock_ticker_cls.return_value.history.return_value = _ONE_YEAR_HISTORY
+
+        results = [r async for r in stock_team.run_team_scan(["AAPL", "NVDA"], session, user_id)]
+
+    assert results[0] == {
+        "ticker": "AAPL",
+        "verdict": "sell",
+        "predicted_price": 200.0,
+        "predicted_horizon": "1mo",
+        "reused": True,
+    }
+    assert results[1]["ticker"] == "NVDA"
+    assert results[1]["verdict"] == "buy"
+    assert results[1]["reused"] is False
+
+    logged_nvda = session.execute(select(TeamVerdictRecord).where(TeamVerdictRecord.ticker == "NVDA")).scalars().all()
+    assert len(logged_nvda) == 1
+    assert logged_nvda[0].verdict == "buy"

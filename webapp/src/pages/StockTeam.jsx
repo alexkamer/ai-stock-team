@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
-import { streamSSE } from '../api/client'
+import { getJSON, streamSSE } from '../api/client'
+import { specialistStatsCache } from '../api/specialistStatsCache'
 import { teamAnalysisCache } from '../api/teamAnalysisCache'
 import TrackRecord from './TrackRecord'
 import '../components/ToolCallPill.css'
@@ -8,6 +9,10 @@ import './StockTeam.css'
 
 const VERDICT_LABEL = { buy: 'Buy', hold: 'Hold', sell: 'Sell' }
 const HORIZON_LABEL = { '1w': '1 week', '1mo': '1 month', '3mo': '3 months' }
+
+// Below this many scored calls, a hit rate is mostly noise - shown as "not
+// enough data yet" instead of a misleadingly precise-looking percentage.
+const MIN_SCORED_CALLS_FOR_ACCURACY = 5
 
 // Six specialists now fit a clean 3x2 grid (see StockTeam.css) - no more
 // awkward single card stranded alone in its own row, so there's no need for
@@ -50,12 +55,26 @@ function OwnershipNote({ ticker, isHeld }) {
   )
 }
 
-function SpecialistCard({ label, description, finding }) {
+function SpecialistAccuracy({ stats }) {
+  if (!stats || stats.scored_calls < MIN_SCORED_CALLS_FOR_ACCURACY) {
+    return <span className="specialist-card__accuracy specialist-card__accuracy--pending">Not enough data yet</span>
+  }
+  return (
+    <span className="specialist-card__accuracy">
+      {stats.hit_rate_percent.toFixed(0)}% · {stats.scored_calls} calls
+    </span>
+  )
+}
+
+function SpecialistCard({ label, description, finding, stats }) {
   return (
     <div className={`card specialist-card${finding ? ' specialist-card--done' : ''}`}>
       <div className="specialist-card__header">
-        <span className="specialist-card__label">{label}</span>
-        <span className="specialist-card__description">{description}</span>
+        <div className="specialist-card__heading">
+          <span className="specialist-card__label">{label}</span>
+          <span className="specialist-card__description">{description}</span>
+        </div>
+        <SpecialistAccuracy stats={stats} />
       </div>
       {finding ? (
         <>
@@ -86,7 +105,13 @@ export default function StockTeam() {
   const [error, setError] = useState(null)
   const [loading, setLoading] = useState(false)
   const [historyRefreshKey, setHistoryRefreshKey] = useState(0)
+  const [specialistStats, setSpecialistStats] = useState({})
   const controllerRef = useRef(null)
+
+  useEffect(() => {
+    specialistStatsCache.promise ??= getJSON('/track-record/specialists').catch(() => ({ specialist_stats: {} }))
+    specialistStatsCache.promise.then((data) => setSpecialistStats(data.specialist_stats ?? {}))
+  }, [])
 
   const runAnalysis = (targetTicker) => {
     setFindings({})
@@ -154,7 +179,13 @@ export default function StockTeam() {
 
       <div className="stock-team__specialists">
         {SPECIALISTS.map((s) => (
-          <SpecialistCard key={s.tool} label={s.label} description={s.description} finding={findings[s.tool]} />
+          <SpecialistCard
+            key={s.tool}
+            label={s.label}
+            description={s.description}
+            finding={findings[s.tool]}
+            stats={specialistStats[s.tool]}
+          />
         ))}
       </div>
 
