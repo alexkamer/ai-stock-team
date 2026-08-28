@@ -125,3 +125,22 @@
   color: var(--text-muted);
   font-size: 13px;
 }
+
+.scan__cell--muted {
+  color: var(--text-muted);
+}
+
+.scan__day-change {
+  display: inline-block;
+  margin-left: 8px;
+  font-size: 12px;
+  font-family: var(--mono);
+}
+
+.scan__day-change--good {
+  color: var(--good);
+}
+
+.scan__day-change--bad {
+  color: var(--critical);
+}

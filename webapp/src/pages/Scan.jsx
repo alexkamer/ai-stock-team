@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { streamSSE } from '../api/client'
+import { getJSON, streamSSE } from '../api/client'
 import '../components/ToolCallPill.css'
 import './StockTeam.css'
 import './Scan.css'
@@ -13,12 +13,27 @@ function VerdictBadge({ verdict }) {
   return <span className={`verdict-badge verdict-badge--${verdict}`}>{VERDICT_LABEL[verdict]}</span>
 }
 
-function ScanRow({ ticker, result }) {
+function PriceCell({ quote }) {
+  if (!quote) return <td className="num scan__cell--muted">—</td>
+  const positive = quote.day_change_percent >= 0
+  return (
+    <td className="num">
+      {quote.price.toFixed(2)}
+      <span className={`scan__day-change ${positive ? 'scan__day-change--good' : 'scan__day-change--bad'}`}>
+        {positive ? '+' : ''}
+        {quote.day_change_percent.toFixed(2)}%
+      </span>
+    </td>
+  )
+}
+
+function ScanRow({ ticker, result, quote }) {
   return (
     <tr className={result?.error ? 'scan__row--error' : ''}>
       <td>
         <Link to={`/tickers/${ticker}/team`}>{ticker}</Link>
       </td>
+      <PriceCell quote={quote} />
       <td>
         {!result ? (
           <span className="scan__pending">
@@ -44,6 +59,7 @@ function ScanRow({ ticker, result }) {
 export default function Scan() {
   const [candidates, setCandidates] = useState(null)
   const [results, setResults] = useState({})
+  const [quotes, setQuotes] = useState({})
   const [error, setError] = useState(null)
   const [running, setRunning] = useState(false)
   const [buyOnly, setBuyOnly] = useState(false)
@@ -52,6 +68,7 @@ export default function Scan() {
   function runScan() {
     setCandidates(null)
     setResults({})
+    setQuotes({})
     setError(null)
     setRunning(true)
     controllerRef.current?.abort()
@@ -63,6 +80,11 @@ export default function Scan() {
       onEvent: (eventName, data) => {
         if (eventName === 'candidates') {
           setCandidates(data.tickers)
+          // One batched quote lookup for the whole candidate pool, not one
+          // per ticker - same endpoint the Header/Dashboard already use.
+          getJSON(`/watchlist?symbols=${data.tickers.join(',')}`)
+            .then((quoteList) => setQuotes(Object.fromEntries(quoteList.map((q) => [q.ticker, q]))))
+            .catch(() => {})
         } else if (eventName === 'result') {
           setResults((prev) => ({ ...prev, [data.ticker]: data }))
         } else if (eventName === 'error') {
@@ -115,6 +137,7 @@ export default function Scan() {
               <thead>
                 <tr>
                   <th>Ticker</th>
+                  <th>Price</th>
                   <th>Verdict</th>
                   <th>Target</th>
                   <th></th>
@@ -122,7 +145,7 @@ export default function Scan() {
               </thead>
               <tbody>
                 {visibleCandidates.map((ticker) => (
-                  <ScanRow key={ticker} ticker={ticker} result={results[ticker]} />
+                  <ScanRow key={ticker} ticker={ticker} result={results[ticker]} quote={quotes[ticker]} />
                 ))}
               </tbody>
             </table>
