@@ -12,7 +12,7 @@ instead of a wall of prose.
 import asyncio
 from dataclasses import dataclass, field
 
-from pydantic_ai import RunContext
+from pydantic_ai import ModelRetry, RunContext
 from pydantic_ai.usage import RunUsage
 
 from core.config import load_agent
@@ -59,8 +59,24 @@ class TeamDeps:
 # hard-failing the whole run.
 _AGENT_RETRIES = 3
 
+
+def _get_pe_ratio_or_skip(ticker: str) -> float:
+    """Wraps get_pe_ratio for fundamentals_agent only: some tickers (thinly
+    traded, pre-earnings) genuinely have no P/E in yfinance, and letting
+    that raw ValueError escape kills the whole ticker's analysis (and, in a
+    scan, that one ticker's slot) over one missing field. ModelRetry is the
+    one exception pydantic-ai's tool execution treats specially - it feeds
+    this message back to the model instead of propagating a hard failure,
+    so the agent can still finish its judgment from price/market cap alone.
+    """
+    try:
+        return get_pe_ratio(ticker)
+    except ValueError as e:
+        raise ModelRetry(f"{e}. Judge this ticker from price and market cap alone, without a P/E figure.") from e
+
+
 fundamentals_agent = load_agent(
-    tools=[get_stock_price, get_market_cap, get_pe_ratio], output_type=SpecialistFinding, retries=_AGENT_RETRIES
+    tools=[get_stock_price, get_market_cap, _get_pe_ratio_or_skip], output_type=SpecialistFinding, retries=_AGENT_RETRIES
 )
 sentiment_agent = load_agent(
     tools=[get_news_headlines], output_type=SpecialistFinding, retries=_AGENT_RETRIES

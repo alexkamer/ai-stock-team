@@ -9,6 +9,7 @@ from unittest.mock import patch
 
 import pandas as pd
 import pytest
+from pydantic_ai import ModelRetry
 from pydantic_ai.models.test import TestModel
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import sessionmaker
@@ -58,6 +59,18 @@ _FINDING_ARGS = {
     "headline": "Looks solid on this dimension.",
     "key_points": ["Concrete figure one.", "Concrete figure two."],
 }
+
+
+def test_pe_ratio_or_skip_raises_model_retry_instead_of_value_error():
+    """A missing P/E (thin/pre-earnings tickers) shouldn't hard-fail the
+    whole analysis - ModelRetry is the one exception pydantic-ai's tool
+    execution treats specially, feeding the message back to the model
+    instead of propagating a crash."""
+    with patch("core.tools.yf.Ticker") as mock_ticker_cls:
+        mock_ticker_cls.return_value.info = {"currentPrice": 5.0, "marketCap": 1e8}
+
+        with pytest.raises(ModelRetry, match="No P/E ratio found"):
+            stock_team._get_pe_ratio_or_skip("TOP")
 
 
 @pytest.mark.asyncio
