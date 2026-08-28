@@ -13,8 +13,10 @@ import asyncio
 from dataclasses import dataclass
 
 from pydantic_ai import RunContext
+from pydantic_ai.usage import RunUsage
 
 from core.config import load_agent
+from core.grounding import check_findings_are_grounded
 from core.models import SpecialistFinding, TeamVerdict
 from core.portfolio_context import build_portfolio_context
 from core.tools import (
@@ -43,13 +45,43 @@ class TeamDeps:
     is_held: bool | None = None
 
 
-fundamentals_agent = load_agent(tools=[get_stock_price, get_market_cap, get_pe_ratio])
-sentiment_agent = load_agent(tools=[get_news_headlines])
-technicals_agent = load_agent(tools=[get_technical_indicators, get_price_performance, get_ticker_stats])
-valuation_agent = load_agent(tools=[get_ticker_overview, get_price_ratios, get_similar_tickers])
-risk_agent = load_agent(tools=[get_technical_indicators, get_ticker_stats, get_price_performance])
+# retries=3 (vs. config.yaml's default of 1) gives check_findings_are_grounded
+# below room for a borderline false positive (a legitimately-derived stat it
+# doesn't recognize) without exhausting the budget and hard-failing the run.
+_GROUNDED_RETRIES = 3
+
+fundamentals_agent = load_agent(
+    tools=[get_stock_price, get_market_cap, get_pe_ratio], output_type=SpecialistFinding, retries=_GROUNDED_RETRIES
+)
+sentiment_agent = load_agent(
+    tools=[get_news_headlines], output_type=SpecialistFinding, retries=_GROUNDED_RETRIES
+)
+technicals_agent = load_agent(
+    tools=[get_technical_indicators, get_price_performance, get_ticker_stats],
+    output_type=SpecialistFinding,
+    retries=_GROUNDED_RETRIES,
+)
+valuation_agent = load_agent(
+    tools=[get_ticker_overview, get_price_ratios, get_similar_tickers],
+    output_type=SpecialistFinding,
+    retries=_GROUNDED_RETRIES,
+)
+risk_agent = load_agent(
+    tools=[get_technical_indicators, get_ticker_stats, get_price_performance],
+    output_type=SpecialistFinding,
+    retries=_GROUNDED_RETRIES,
+)
 portfolio_fit_agent = load_agent()
 synthesizer = load_agent(deps_type=TeamDeps)
+
+# Every tool-using specialist gets the same numeric-grounding check (a no-op
+# for sentiment_agent, whose tool returns headline text with no numbers to
+# cite) - portfolio_fit_agent has no tools of its own to be grounded against.
+# Their output_type is fixed at construction above (not passed to .run())
+# because pydantic-ai forbids a per-run output_type once a validator is
+# attached.
+for _specialist in (fundamentals_agent, sentiment_agent, technicals_agent, valuation_agent, risk_agent):
+    _specialist.output_validator(check_findings_are_grounded)
 
 
 @synthesizer.tool
@@ -63,7 +95,6 @@ async def get_fundamentals(ctx: RunContext, ticker: str) -> dict:
         f"Look up {ticker}'s current price, market cap, and P/E ratio, then judge whether that profile "
         "looks positive, neutral, or negative for the stock.",
         usage=ctx.usage,
-        output_type=SpecialistFinding,
     )
     return result.output.model_dump()
 
@@ -79,7 +110,6 @@ async def get_sentiment(ctx: RunContext, ticker: str) -> dict:
         f"Based on recent headlines, judge whether sentiment on {ticker} is positive, neutral, or "
         "negative.",
         usage=ctx.usage,
-        output_type=SpecialistFinding,
     )
     return result.output.model_dump()
 
@@ -98,7 +128,6 @@ async def get_technicals(ctx: RunContext, ticker: str) -> dict:
         "above/below its moving averages, RSI overbought/oversold, MACD bullish/bearish crossover), not "
         "just the raw percent-change numbers.",
         usage=ctx.usage,
-        output_type=SpecialistFinding,
     )
     return result.output.model_dump()
 
@@ -115,7 +144,6 @@ async def get_valuation(ctx: RunContext, ticker: str) -> dict:
         "peers, then judge whether it looks cheap (positive), fairly valued (neutral), or expensive "
         "(negative) relative to those peers.",
         usage=ctx.usage,
-        output_type=SpecialistFinding,
     )
     return result.output.model_dump()
 
@@ -132,7 +160,6 @@ async def get_risk(ctx: RunContext, ticker: str) -> dict:
         "performance, then judge its volatility/downside risk as low (positive), moderate (neutral), or "
         "high (negative). Cite the actual computed volatility figure, not just beta.",
         usage=ctx.usage,
-        output_type=SpecialistFinding,
     )
     return result.output.model_dump()
 
@@ -170,6 +197,26 @@ class TeamAnalysisResult:
 
     verdict: TeamVerdict
     is_held: bool | None
+    usage: RunUsage
+
+
+_SYNTHESIS_RUBRIC = """\
+1. Match specialists to the horizon you're targeting, don't average all six evenly:
+   - 1w calls: weight technicals and risk/macro most heavily (they capture near-term momentum and
+     volatility). Sentiment is a secondary confirming/disconfirming signal here, not a primary driver.
+   - 1mo calls: weight technicals, sentiment, and risk roughly evenly; valuation/fundamentals matter less
+     since multiples rarely re-rate that fast.
+   - 3mo calls: weight fundamentals and valuation most heavily (multiples and earnings trajectory play
+     out over quarters); a short-term technical pullback matters less at this horizon.
+2. When specialists disagree, don't silently average into a default 'hold'. Name the conflict explicitly
+   in reasoning (e.g. "technicals are bullish but valuation and risk are both negative"), say which
+   side you weighted more heavily for the horizon you picked, and say why.
+3. Each key_factors bullet must state the specialist's finding AND its implication for the verdict, not
+   just restate the specialist's headline verbatim - e.g. not "Valuation: expensive vs peers" but
+   "Valuation: 120x P/E vs peers' 20-60x leaves little room for a miss, arguing against adding here."
+4. portfolio_fit changes sizing/timing (e.g. tempers a buy into a hold if already overweight), not
+   direction - don't let it override a clear fundamentals/technicals/valuation signal on its own.\
+"""
 
 
 def _ownership_instruction(ticker: str, is_held: bool | None) -> str:
@@ -200,22 +247,25 @@ async def get_team_analysis(
     )
     is_held = portfolio_context.is_held if portfolio_context else None
 
+    deps = TeamDeps(
+        portfolio_summary=portfolio_context.summary if portfolio_context else None,
+        is_held=is_held,
+    )
     result = await synthesizer.run(
-        f"Give me a buy/hold/sell take on {ticker}, weighing fundamentals, sentiment, technicals, "
-        "valuation relative to peers, risk/macro considerations, and how it fits the user's actual "
-        f"portfolio. {_ownership_instruction(ticker, is_held)} Also give a specific predicted_price "
-        "target and pick the predicted_horizon (1w/1mo/3mo) it applies to, consistent with your verdict "
-        "and the specialists' findings (e.g. a buy should target a price above the current one).",
+        f"Give me a buy/hold/sell take on {ticker}. Call all six specialist tools first, then weigh "
+        f"their findings using this rubric before writing key_factors/reasoning:\n\n"
+        f"{_SYNTHESIS_RUBRIC}\n\n"
+        f"{_ownership_instruction(ticker, is_held)} Also give a specific predicted_price target and pick "
+        "the predicted_horizon (1w/1mo/3mo) it applies to, consistent with your verdict and the "
+        "specialists' findings (e.g. a buy should target a price above the current one) - and consistent "
+        "with which horizon you weighted most heavily per the rubric above.",
         output_type=TeamVerdict,
         event_stream_handler=event_stream_handler,
-        deps=TeamDeps(
-            portfolio_summary=portfolio_context.summary if portfolio_context else None,
-            is_held=is_held,
-        ),
+        deps=deps,
     )
     verdict = result.output
     if is_held is False and verdict.verdict == "sell":
         # Defensive clamp - the model shouldn't recommend selling shares that
         # don't exist, even though the prompt above already tells it not to.
         verdict.verdict = "hold"
-    return TeamAnalysisResult(verdict=verdict, is_held=is_held)
+    return TeamAnalysisResult(verdict=verdict, is_held=is_held, usage=result.usage)

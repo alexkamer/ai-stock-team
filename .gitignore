@@ -27,3 +27,6 @@ data/
 
 # Seeded local admin account credentials
 .admin_credentials
+
+# Local brainstorming notes
+IDEAS.md
