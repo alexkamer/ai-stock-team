@@ -130,6 +130,14 @@ async def test_get_team_analysis_delegates_to_all_specialists():
 
     assert analysis.verdict.ticker == "AAPL"
     assert analysis.verdict.verdict == "hold"
+    assert {c["specialist_key"] for c in analysis.specialist_calls} == {
+        "get_fundamentals",
+        "get_sentiment",
+        "get_technicals",
+        "get_valuation",
+        "get_risk",
+    }
+    assert all(c["signal"] == "positive" for c in analysis.specialist_calls)
 
 
 @pytest.mark.asyncio

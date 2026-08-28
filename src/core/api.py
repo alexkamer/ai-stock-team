@@ -33,7 +33,7 @@ from core.models_db import TeamVerdictRecord, User
 from core.routers import auth as auth_router
 from core.routers import brokerage as brokerage_router
 from core.sse import Final, format_sse, run_agent_streaming
-from core.track_record import aggregate_stats, log_verdict, score_record
+from core.track_record import aggregate_stats, log_verdict, score_record, specialist_stats
 from core.tools import (
     DEFAULT_WATCHLIST,
     NEWS_CATEGORY_TICKERS,
@@ -420,7 +420,14 @@ async def get_ticker_team_analysis(
                     analysis = item.value
 
                     def _log_verdict() -> None:
-                        log_verdict(db, user.id, ticker, get_stock_price(ticker), analysis.verdict)
+                        log_verdict(
+                            db,
+                            user.id,
+                            ticker,
+                            get_stock_price(ticker),
+                            analysis.verdict,
+                            specialist_calls=analysis.specialist_calls,
+                        )
 
                     await asyncio.to_thread(_log_verdict)
                     payload = analysis.verdict.model_dump()
@@ -453,6 +460,15 @@ def get_track_record(
 
     records = [score_record(record) for record in db.execute(query).scalars().all()]
     return {"records": records, "stats": aggregate_stats(records)}
+
+
+@app.get("/track-record/specialists")
+def get_specialist_track_record(user: User = Depends(get_current_user), db: DbSession = Depends(get_db)) -> dict:
+    """Unlike /track-record, deliberately not ticker-scoped - a specialist's
+    calibration is a property of the agent, not of any one ticker."""
+    query = select(TeamVerdictRecord).where(TeamVerdictRecord.user_id == user.id)
+    records = [score_record(record) for record in db.execute(query).scalars().all()]
+    return {"specialist_stats": specialist_stats(records)}
 
 
 @app.post("/chat")

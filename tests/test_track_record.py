@@ -15,8 +15,8 @@ from sqlalchemy.pool import StaticPool
 
 from core.db import Base
 from core.models import TeamVerdict
-from core.models_db import TeamVerdictRecord, User
-from core.track_record import aggregate_stats, log_verdict, score_record
+from core.models_db import SpecialistCallRecord, TeamVerdictRecord, User
+from core.track_record import aggregate_stats, log_verdict, score_record, specialist_stats
 
 
 @pytest.fixture
@@ -75,6 +75,43 @@ def test_log_verdict_allows_different_tickers_same_day(db):
 
     rows = session.execute(select(TeamVerdictRecord)).scalars().all()
     assert {r.ticker for r in rows} == {"NVDA", "AAPL"}
+
+
+def test_log_verdict_persists_specialist_calls(db):
+    session, user_id = db
+    log_verdict(
+        session,
+        user_id,
+        "NVDA",
+        200.0,
+        _verdict(),
+        specialist_calls=[
+            {"specialist_key": "get_fundamentals", "signal": "positive"},
+            {"specialist_key": "get_risk", "signal": "neutral"},
+        ],
+    )
+
+    rows = session.execute(select(SpecialistCallRecord)).scalars().all()
+    assert {(r.specialist_key, r.signal) for r in rows} == {
+        ("get_fundamentals", "positive"),
+        ("get_risk", "neutral"),
+    }
+    verdict_id = session.execute(select(TeamVerdictRecord.id)).scalar_one()
+    assert all(r.team_verdict_id == verdict_id for r in rows)
+
+
+def test_log_verdict_skips_specialist_calls_on_same_day_noop(db):
+    session, user_id = db
+    log_verdict(
+        session, user_id, "NVDA", 200.0, _verdict(), specialist_calls=[{"specialist_key": "get_risk", "signal": "positive"}]
+    )
+    log_verdict(
+        session, user_id, "NVDA", 205.0, _verdict(), specialist_calls=[{"specialist_key": "get_risk", "signal": "negative"}]
+    )
+
+    rows = session.execute(select(SpecialistCallRecord)).scalars().all()
+    assert len(rows) == 1
+    assert rows[0].signal == "positive"
 
 
 def _record(call_date, price_at_call=200.0, verdict="buy", predicted_price=None, predicted_horizon=None):
@@ -206,6 +243,50 @@ def test_score_record_price_target_scored_after_horizon_elapses(mock_ticker_cls)
     assert scored["price_target"]["horizon"] == "1w"
     assert scored["price_target"]["actual_price"] > 205.0
     assert scored["price_target"]["percent_diff"] > 0
+
+
+@patch("core.track_record.yf.Ticker")
+def test_score_record_scores_specialist_calls_against_the_same_alpha(mock_ticker_cls):
+    call_date = date.today() - timedelta(days=10)
+    # NVDA well outpacing SPY - positive alpha.
+    mock_ticker_cls.side_effect = _mock_ticker_history(
+        nvda_daily_return=0.005, spy_daily_return=0.0005, days=20, start=call_date
+    )
+    record = _record(call_date, verdict="buy")
+    record.specialist_calls = [
+        SpecialistCallRecord(specialist_key="get_fundamentals", signal="positive"),
+        SpecialistCallRecord(specialist_key="get_risk", signal="negative"),
+        SpecialistCallRecord(specialist_key="get_valuation", signal="neutral"),
+    ]
+
+    scored = score_record(record)
+    by_key = {c["specialist_key"]: c for c in scored["specialist_calls"]}
+
+    assert by_key["get_fundamentals"]["hit"] is True  # positive signal, positive alpha
+    assert by_key["get_risk"]["hit"] is False  # negative signal, positive alpha
+    assert by_key["get_valuation"]["hit"] is False  # neutral signal, alpha outside hold band
+
+
+def test_specialist_stats_groups_hit_rate_by_specialist():
+    scored_records = [
+        {
+            "specialist_calls": [
+                {"specialist_key": "get_fundamentals", "signal": "positive", "alpha_percent": 5.0, "hit": True},
+                {"specialist_key": "get_risk", "signal": "negative", "alpha_percent": 5.0, "hit": False},
+            ]
+        },
+        {
+            "specialist_calls": [
+                {"specialist_key": "get_fundamentals", "signal": "positive", "alpha_percent": -1.0, "hit": False},
+                {"specialist_key": "get_risk", "signal": None, "alpha_percent": None, "hit": None},
+            ]
+        },
+    ]
+
+    stats = specialist_stats(scored_records)
+
+    assert stats["get_fundamentals"] == {"total_calls": 2, "scored_calls": 2, "hit_rate_percent": pytest.approx(50.0)}
+    assert stats["get_risk"] == {"total_calls": 2, "scored_calls": 1, "hit_rate_percent": 0.0}
 
 
 def test_aggregate_stats_computes_hit_rate_and_avg_alpha():

@@ -10,7 +10,7 @@ instead of a wall of prose.
 """
 
 import asyncio
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from pydantic_ai import RunContext
 from pydantic_ai.usage import RunUsage
@@ -43,6 +43,11 @@ class TeamDeps:
 
     portfolio_summary: str | None = None
     is_held: bool | None = None
+    # Populated by each specialist tool below as it returns, so
+    # get_team_analysis can hand the signals to the caller for track-record
+    # persistence - the synthesizer LLM only ever sees the dict it returns,
+    # not this list.
+    specialist_calls: list[dict] = field(default_factory=list)
 
 
 # retries=3 (vs. config.yaml's default of 1) gives check_findings_are_grounded
@@ -96,6 +101,7 @@ async def get_fundamentals(ctx: RunContext, ticker: str) -> dict:
         "looks positive, neutral, or negative for the stock.",
         usage=ctx.usage,
     )
+    ctx.deps.specialist_calls.append({"specialist_key": "get_fundamentals", "signal": result.output.signal})
     return result.output.model_dump()
 
 
@@ -111,6 +117,7 @@ async def get_sentiment(ctx: RunContext, ticker: str) -> dict:
         "negative.",
         usage=ctx.usage,
     )
+    ctx.deps.specialist_calls.append({"specialist_key": "get_sentiment", "signal": result.output.signal})
     return result.output.model_dump()
 
 
@@ -129,6 +136,7 @@ async def get_technicals(ctx: RunContext, ticker: str) -> dict:
         "just the raw percent-change numbers.",
         usage=ctx.usage,
     )
+    ctx.deps.specialist_calls.append({"specialist_key": "get_technicals", "signal": result.output.signal})
     return result.output.model_dump()
 
 
@@ -145,6 +153,7 @@ async def get_valuation(ctx: RunContext, ticker: str) -> dict:
         "(negative) relative to those peers.",
         usage=ctx.usage,
     )
+    ctx.deps.specialist_calls.append({"specialist_key": "get_valuation", "signal": result.output.signal})
     return result.output.model_dump()
 
 
@@ -161,6 +170,7 @@ async def get_risk(ctx: RunContext, ticker: str) -> dict:
         "high (negative). Cite the actual computed volatility figure, not just beta.",
         usage=ctx.usage,
     )
+    ctx.deps.specialist_calls.append({"specialist_key": "get_risk", "signal": result.output.signal})
     return result.output.model_dump()
 
 
@@ -172,6 +182,9 @@ async def get_portfolio_fit(ctx: RunContext[TeamDeps], ticker: str) -> dict:
         ticker: Stock ticker symbol, e.g. 'NVDA'.
     """
     if ctx.deps.portfolio_summary is None:
+        # Not recorded in specialist_calls - this is a canned fallback with
+        # no real judgment behind it, not an analysis worth scoring for
+        # accuracy.
         return {
             "signal": "neutral",
             "headline": "No brokerage connected - portfolio fit unavailable.",
@@ -185,6 +198,7 @@ async def get_portfolio_fit(ctx: RunContext[TeamDeps], ticker: str) -> dict:
         usage=ctx.usage,
         output_type=SpecialistFinding,
     )
+    ctx.deps.specialist_calls.append({"specialist_key": "get_portfolio_fit", "signal": result.output.signal})
     return result.output.model_dump()
 
 
@@ -198,6 +212,7 @@ class TeamAnalysisResult:
     verdict: TeamVerdict
     is_held: bool | None
     usage: RunUsage
+    specialist_calls: list[dict]
 
 
 _SYNTHESIS_RUBRIC = """\
@@ -268,4 +283,6 @@ async def get_team_analysis(
         # Defensive clamp - the model shouldn't recommend selling shares that
         # don't exist, even though the prompt above already tells it not to.
         verdict.verdict = "hold"
-    return TeamAnalysisResult(verdict=verdict, is_held=is_held, usage=result.usage)
+    return TeamAnalysisResult(
+        verdict=verdict, is_held=is_held, usage=result.usage, specialist_calls=deps.specialist_calls
+    )

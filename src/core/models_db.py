@@ -129,6 +129,30 @@ class TeamVerdictRecord(Base):
     call_date: Mapped[date] = mapped_column(Date(), index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(), default=_now)
 
+    specialist_calls: Mapped[list["SpecialistCallRecord"]] = relationship(
+        back_populates="team_verdict", cascade="all, delete-orphan"
+    )
+
+
+class SpecialistCallRecord(Base):
+    """One specialist's signal on a given TeamVerdictRecord, for calibrating
+    that specialist's own accuracy over time (see core/track_record.py).
+
+    0-6 rows per verdict, not always 6 - the synthesizer decides which
+    specialist tools to call, and the no-brokerage portfolio_fit fallback
+    (a canned response, not a real judgment) is deliberately never recorded
+    here."""
+
+    __tablename__ = "specialist_calls"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    team_verdict_id: Mapped[int] = mapped_column(ForeignKey("team_verdicts.id"), index=True)
+    specialist_key: Mapped[str] = mapped_column(String(32), index=True)
+    signal: Mapped[str] = mapped_column(String(8))
+    created_at: Mapped[datetime] = mapped_column(DateTime(), default=_now)
+
+    team_verdict: Mapped["TeamVerdictRecord"] = relationship(back_populates="specialist_calls")
+
 
 class LlmCallLog(Base):
     """One row per LLM call whose caller has a DB session - real per-call

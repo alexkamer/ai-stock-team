@@ -17,21 +17,35 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session as DbSession
 
 from core.models import TeamVerdict
-from core.models_db import TeamVerdictRecord
+from core.models_db import SpecialistCallRecord, TeamVerdictRecord
 
 BENCHMARK = "SPY"
 HORIZONS_DAYS = {"1w": 7, "1mo": 30, "3mo": 90}
 HOLD_BAND_PERCENT = 3.0
+
+# SpecialistFinding.signal ("positive"/"neutral"/"negative", core/models.py)
+# maps onto the same buy/hold/sell hit logic _is_hit() already judges the
+# aggregate verdict with - a specialist's positive lean is a "buy" call in
+# the same sense that this ticker should have outperformed the benchmark.
+_SIGNAL_TO_VERDICT = {"positive": "buy", "neutral": "hold", "negative": "sell"}
 
 
 def _today() -> date:
     return datetime.now(timezone.utc).date()
 
 
-def log_verdict(db: DbSession, user_id: int, ticker: str, price_at_call: float, verdict: TeamVerdict) -> None:
+def log_verdict(
+    db: DbSession,
+    user_id: int,
+    ticker: str,
+    price_at_call: float,
+    verdict: TeamVerdict,
+    specialist_calls: list[dict] | None = None,
+) -> None:
     """No-op if this ticker already has a logged verdict for today -
     regenerating later the same day just refreshes the on-screen view, it
-    doesn't create a second row."""
+    doesn't create a second row (and the freshly-run specialists' signals
+    aren't persisted either, for the same reason)."""
     today = _today()
     already_logged = db.execute(
         select(TeamVerdictRecord.id).where(
@@ -43,19 +57,28 @@ def log_verdict(db: DbSession, user_id: int, ticker: str, price_at_call: float, 
     if already_logged:
         return
 
-    db.add(
-        TeamVerdictRecord(
-            user_id=user_id,
-            ticker=ticker,
-            verdict=verdict.verdict,
-            key_factors=json.dumps(verdict.key_factors),
-            reasoning=verdict.reasoning,
-            price_at_call=price_at_call,
-            predicted_price=verdict.predicted_price,
-            predicted_horizon=verdict.predicted_horizon,
-            call_date=today,
-        )
+    record = TeamVerdictRecord(
+        user_id=user_id,
+        ticker=ticker,
+        verdict=verdict.verdict,
+        key_factors=json.dumps(verdict.key_factors),
+        reasoning=verdict.reasoning,
+        price_at_call=price_at_call,
+        predicted_price=verdict.predicted_price,
+        predicted_horizon=verdict.predicted_horizon,
+        call_date=today,
     )
+    db.add(record)
+    db.flush()  # assigns record.id, needed by the FK below
+
+    for call in specialist_calls or []:
+        db.add(
+            SpecialistCallRecord(
+                team_verdict_id=record.id,
+                specialist_key=call["specialist_key"],
+                signal=call["signal"],
+            )
+        )
     db.commit()
 
 
@@ -140,6 +163,16 @@ def score_record(record: TeamVerdictRecord) -> dict:
 
     current = _score_as_of(today)
 
+    specialist_calls = [
+        {
+            "specialist_key": call.specialist_key,
+            "signal": call.signal,
+            "alpha_percent": current["alpha_percent"] if current else None,
+            "hit": _is_hit(_SIGNAL_TO_VERDICT[call.signal], current["alpha_percent"]) if current else None,
+        }
+        for call in record.specialist_calls
+    ]
+
     return {
         "id": record.id,
         "ticker": record.ticker,
@@ -151,6 +184,7 @@ def score_record(record: TeamVerdictRecord) -> dict:
         "current": current,
         "horizons": horizons,
         "price_target": _price_target_score(record, ticker_closes),
+        "specialist_calls": specialist_calls,
     }
 
 
@@ -169,3 +203,25 @@ def aggregate_stats(scored_records: list[dict]) -> dict:
         "hit_rate_percent": (hits / len(with_current) * 100) if with_current else None,
         "avg_alpha_by_verdict": avg_alpha_by_verdict,
     }
+
+
+def specialist_stats(scored_records: list[dict]) -> dict:
+    """Per-specialist accuracy, flattened across every scored record
+    regardless of ticker - a specialist's calibration is a property of the
+    agent, not of any one ticker, so this deliberately isn't ticker-scoped
+    the way `scored_records` passed to `aggregate_stats` may be."""
+    calls_by_specialist: dict[str, list[dict]] = {}
+    for record in scored_records:
+        for call in record["specialist_calls"]:
+            calls_by_specialist.setdefault(call["specialist_key"], []).append(call)
+
+    stats = {}
+    for specialist_key, calls in calls_by_specialist.items():
+        scored = [c for c in calls if c["hit"] is not None]
+        hits = sum(1 for c in scored if c["hit"])
+        stats[specialist_key] = {
+            "total_calls": len(calls),
+            "scored_calls": len(scored),
+            "hit_rate_percent": (hits / len(scored) * 100) if scored else None,
+        }
+    return stats
