@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { getJSON } from '../api/client'
+import { trackRecordCache } from '../api/trackRecordCache'
 import './TrackRecord.css'
 
 const VERDICT_LABEL = { buy: 'Buy', hold: 'Hold', sell: 'Sell' }
@@ -26,7 +27,7 @@ function AlphaCell({ scored }) {
   return (
     <span className={`track-record__cell track-record__alpha ${scored.hit ? 'track-record__alpha--hit' : 'track-record__alpha--miss'}`}>
       {positive ? '+' : ''}{scored.alpha_percent.toFixed(1)}%
-      <span className="track-record__alpha-tag">{scored.hit ? 'hit' : 'miss'}</span>
+      <span className="track-record__alpha-tag">{scored.hit ? 'Hit' : 'Miss'}</span>
     </span>
   )
 }
@@ -68,17 +69,22 @@ function StatTile({ label, value, sub }) {
 }
 
 export default function TrackRecord({ ticker, compact = false }) {
-  const [data, setData] = useState(null)
+  const cacheKey = ticker ?? 'all'
+  const [data, setData] = useState(() => trackRecordCache.byKey[cacheKey] ?? null)
   const [error, setError] = useState(null)
+  const [sortDir, setSortDir] = useState('desc')
 
   useEffect(() => {
-    setData(null)
+    setData(trackRecordCache.byKey[cacheKey] ?? null)
     setError(null)
     const path = ticker ? `/track-record?ticker=${ticker}` : '/track-record'
     getJSON(path)
-      .then(setData)
+      .then((result) => {
+        trackRecordCache.byKey[cacheKey] = result
+        setData(result)
+      })
       .catch((e) => setError(e.message))
-  }, [ticker])
+  }, [ticker, cacheKey])
 
   if (error) return <div className="error-banner">{error}</div>
   if (!data) {
@@ -89,7 +95,10 @@ export default function TrackRecord({ ticker, compact = false }) {
     )
   }
 
-  const { records, stats } = data
+  const { stats } = data
+  const records = [...data.records].sort((a, b) =>
+    sortDir === 'desc' ? b.call_date.localeCompare(a.call_date) : a.call_date.localeCompare(b.call_date)
+  )
 
   if (records.length === 0) {
     return (
@@ -129,9 +138,15 @@ export default function TrackRecord({ ticker, compact = false }) {
           <thead>
             <tr>
               {!ticker && <th>Ticker</th>}
-              <th>Call date</th>
+              <th
+                className="sortable"
+                onClick={() => setSortDir((d) => (d === 'desc' ? 'asc' : 'desc'))}
+              >
+                Call date
+                <span className="track-record__sort-arrow">{sortDir === 'desc' ? '↓' : '↑'}</span>
+              </th>
               <th>Verdict</th>
-              <th>Price at call</th>
+              <th className="num">Price at call</th>
               <th>Target</th>
               <th>Since call</th>
               {HORIZONS.map((h) => (
@@ -147,7 +162,7 @@ export default function TrackRecord({ ticker, compact = false }) {
                     <Link to={`/tickers/${record.ticker}/team`}>{record.ticker}</Link>
                   </td>
                 )}
-                <td className="num">{record.call_date}</td>
+                <td>{record.call_date}</td>
                 <td>
                   <VerdictBadge verdict={record.verdict} />
                 </td>

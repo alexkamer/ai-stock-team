@@ -79,8 +79,37 @@
   border-bottom: none;
 }
 
+.track-record__table tbody tr:nth-child(even) {
+  background: var(--surface-2);
+}
+
+.track-record__table tbody tr:hover {
+  background: color-mix(in srgb, var(--surface-2) 60%, var(--text-primary) 8%);
+}
+
+.track-record__table td.num,
+.track-record__table th.num {
+  text-align: right;
+  font-family: var(--mono);
+}
+
+.track-record__table th.sortable {
+  cursor: pointer;
+  user-select: none;
+}
+
+.track-record__table th.sortable:hover {
+  color: var(--text-secondary);
+}
+
+.track-record__sort-arrow {
+  margin-left: 4px;
+  opacity: 0.6;
+}
+
 .track-record__verdict-badge {
-  padding: 3px 10px;
+  padding: 2px 9px;
+  border: 1px solid transparent;
   border-radius: 3px;
   font-size: 12px;
   font-weight: 600;
@@ -97,8 +126,9 @@
 }
 
 .track-record__verdict-badge--hold {
-  background: var(--surface-2);
+  background: transparent;
   color: var(--text-secondary);
+  border-color: var(--border);
 }
 
 .track-record__cell--muted {
@@ -123,20 +153,11 @@
 
 .track-record__alpha-tag {
   font-size: 10px;
+  font-family: var(--sans, inherit);
   text-transform: uppercase;
   letter-spacing: 0.03em;
-  padding: 1px 5px;
-  border-radius: 3px;
-}
-
-.track-record__alpha--hit .track-record__alpha-tag {
-  background: var(--good);
-  color: var(--paper);
-}
-
-.track-record__alpha--miss .track-record__alpha-tag {
-  background: var(--critical);
-  color: var(--paper);
+  color: var(--text-muted);
+  opacity: 0.75;
 }
 
 .track-record__target {
