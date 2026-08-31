@@ -22,7 +22,7 @@ An AI-powered stock research app built with [pydantic-ai](https://ai.pydantic.de
 ## What's here
 
 - **CLI** — point it at a ticker, get a structured snapshot: price, market cap, P/E, sentiment, and a short summary.
-- **Web app** — a dashboard with an editable watchlist, market screens (stocks/options/private companies), a per-ticker detail page with an interactive price chart, a multi-agent buy/hold/sell verdict page, a research chat with a live per-ticker canvas, follow-up suggestions, and side-by-side comparison, and a read-only brokerage page (via SnapTrade) with live positions/orders and news for what you actually hold.
+- **Web app** — a dashboard with an editable watchlist, market screens (stocks/options/private companies), a per-ticker detail page with an interactive price chart, a multi-agent buy/hold/sell verdict page, a Buy Scan that runs that same verdict engine over today's market movers to surface new ideas, a Themes tab that turns a curated investment theme into a data-ranked dollar allocation, a Track Record page scoring past AI verdicts against reality, a research chat with a live per-ticker canvas, follow-up suggestions, and side-by-side comparison, and a read-only brokerage page (via SnapTrade) with live positions/orders and news for what you actually hold.
 - **Backend API** — FastAPI + Server-Sent Events, streaming quotes, sentiment, and agent tool calls live to the frontend.
 
 ## Tech stack
@@ -199,6 +199,27 @@ verdict. A fundamentals specialist and a sentiment specialist each stream in
 their own analysis card, then a synthesizer agent weighs both into a final
 verdict with reasoning — so you see the "why" instead of just an answer.
 
+**Buy Scan (`/scan`)** — runs the full Stock Team multi-agent verdict over
+today's most-active, top-gaining, top-losing, trending, and best-historical
+tickers (deduped, capped at 20) instead of just your own watchlist, so you
+can discover buy ideas outside what you already hold. Streams each verdict
+in live as it's produced, has a "Buy only" filter, and reuses a ticker's
+already-logged verdict for the day instead of re-running the full pipeline
+if you scan again.
+
+**Themes (`/themes`)** — pick a curated investment theme (AI & Machine
+Learning, Semiconductors, Cybersecurity, Clean Energy & EVs, and more),
+enter a dollar amount, and get a data-ranked allocation across that theme's
+live ticker universe — no LLM in the request path, so it resolves in
+seconds. Each theme's tickers come from either a live yfinance industry
+screen (for themes that map cleanly to one industry) or a curated seed list
+(for themes spanning several), and every ticker is filtered to one with a
+live, fetchable price before it's included. Weighting is a 3-month
+momentum + market-cap composite, computed and clamped in Python rather
+than trusted from an LLM. Every build is saved; past portfolios group by
+theme in a collapsible history list, and clicking any past run re-renders
+it exactly like a fresh build — full allocation table, weights, and all.
+
 **Research Chat (`/chat`)** — open-ended Q&A about any stock, backed by a
 tool-using agent (price, market cap, P/E, day change, history, news,
 watchlist lookups) with your watchlist and today's date in its system
@@ -243,6 +264,13 @@ connected is. A few things worth knowing:
   original articles.
 - Prices auto-refresh every 30s while the tab is visible, with a "last
   updated" timestamp next to the total.
+
+**Track Record (`/track-record`)** — scores every past Stock Team verdict
+against what actually happened, using real historical prices at the
+verdict's own 1-week/1-month/3-month horizon, and rolls that up into
+overall hit-rate stats plus a per-specialist breakdown (e.g. "Fundamentals:
+68% · 14 calls") — so you can see which specialist's calls to trust more,
+not just the final aggregate verdict.
 
 **Markets (`/markets/...`)** — paginated screens for stocks (most-active,
 gainers, losers, top-performing, trending, best-historical, top ETFs),
