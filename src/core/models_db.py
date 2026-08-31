@@ -154,6 +154,51 @@ class SpecialistCallRecord(Base):
     team_verdict: Mapped["TeamVerdictRecord"] = relationship(back_populates="specialist_calls")
 
 
+class ThemePortfolio(Base):
+    """One thematic allocation run - the Themes tab's version of
+    TeamVerdictRecord, but for a basket of picks rather than a single
+    ticker's verdict. `method` distinguishes a no-LLM "formula" run (pure
+    momentum/market-cap ranking) from an "ai_team" run (full multi-agent
+    vetting + a conviction-weighted allocator agent) - see
+    agents/theme_builder.py."""
+
+    __tablename__ = "theme_portfolios"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    theme_key: Mapped[str] = mapped_column(String(32), index=True)
+    amount: Mapped[float] = mapped_column(Float())
+    summary: Mapped[str] = mapped_column(Text())
+    method: Mapped[str] = mapped_column(String(16), default="ai_team")
+    created_at: Mapped[datetime] = mapped_column(DateTime(), default=_now, index=True)
+
+    picks: Mapped[list["ThemePortfolioPick"]] = relationship(
+        back_populates="theme_portfolio", cascade="all, delete-orphan"
+    )
+
+
+class ThemePortfolioPick(Base):
+    """One stock's slice of a ThemePortfolio - weight/dollar amount/shares
+    are the Python-computed values (see agents/theme_builder.py), not raw
+    LLM output, so they're trustworthy arithmetic rather than a model guess.
+    `verdict` is nullable: a "formula" method pick was never vetted for a
+    buy/hold/sell call, so None here is the honest state for it (not a
+    missing value)."""
+
+    __tablename__ = "theme_portfolio_picks"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    theme_portfolio_id: Mapped[int] = mapped_column(ForeignKey("theme_portfolios.id"), index=True)
+    ticker: Mapped[str] = mapped_column(String(16), index=True)
+    verdict: Mapped[str | None] = mapped_column(String(8), nullable=True)
+    weight_percent: Mapped[float] = mapped_column(Float())
+    dollar_amount: Mapped[float] = mapped_column(Float())
+    shares: Mapped[float] = mapped_column(Float())
+    rationale: Mapped[str] = mapped_column(Text())
+
+    theme_portfolio: Mapped["ThemePortfolio"] = relationship(back_populates="picks")
+
+
 class LlmCallLog(Base):
     """One row per LLM call whose caller has a DB session - real per-call
     cost via genai_prices, not an estimate. user_id is nullable since some

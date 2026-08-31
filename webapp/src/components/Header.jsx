@@ -24,6 +24,7 @@ const NAV_LINKS = [
     ],
   },
   { to: '/scan', label: 'Buy Scan', end: true },
+  { to: '/themes', label: 'Themes', end: true },
   { to: '/chat', label: 'Chat', end: true },
   { to: '/brokerage', label: 'Brokerage', end: true },
   { to: '/track-record', label: 'Track Record', end: true },

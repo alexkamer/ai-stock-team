@@ -16,6 +16,7 @@ import AdvancedCharts from './pages/AdvancedCharts'
 import Login from './pages/Login'
 import Signup from './pages/Signup'
 import Brokerage from './pages/Brokerage'
+import Themes from './pages/Themes'
 import TrackRecord from './pages/TrackRecord'
 import RequireAuth from './components/RequireAuth'
 import { AuthProvider } from './context/AuthContext'
@@ -41,6 +42,14 @@ export default function App() {
                 <Route path="team" element={<StockTeam />} />
               </Route>
               <Route path="/scan" element={<Scan />} />
+              <Route
+                path="/themes"
+                element={
+                  <RequireAuth>
+                    <Themes />
+                  </RequireAuth>
+                }
+              />
               <Route path="/research/stock-comparison" element={<StockComparison />} />
               <Route path="/research/advanced-charts" element={<AdvancedCharts />} />
               <Route path="/chat" element={<ResearchChat />} />

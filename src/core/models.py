@@ -63,6 +63,23 @@ class SpecialistFinding(BaseModel):
     )
 
 
+class ThemeAllocationPick(BaseModel):
+    ticker: str = Field(description="Stock ticker symbol, e.g. AAPL")
+    weight_percent: float = Field(
+        description="Percent of the total amount allocated to this ticker; all picks' weights sum to 100"
+    )
+    rationale: str = Field(
+        description="One sentence tying this weight to the ticker's verdict, conviction, and predicted upside"
+    )
+
+
+class ThemeAllocation(BaseModel):
+    picks: list[ThemeAllocationPick] = Field(description="One entry per stock included in the basket")
+    summary: str = Field(
+        description="One or two sentences on the basket's overall tilt and its main concentration/risk caveat"
+    )
+
+
 class TeamVerdict(BaseModel):
     ticker: str = Field(description="Stock ticker symbol, e.g. AAPL")
     verdict: Literal["buy", "hold", "sell"] = Field(

@@ -27,12 +27,14 @@ from sqlalchemy.orm import Session as DbSession
 from agents.chat import send_message
 from agents.main import get_article_summary, get_sentiment_streaming
 from agents.stock_team import get_team_analysis, run_team_scan
+from agents.theme_builder import build_formula_allocation, get_theme_history
 from core.auth import get_current_user
 from core.db import get_db
 from core.models_db import TeamVerdictRecord, User
 from core.routers import auth as auth_router
 from core.routers import brokerage as brokerage_router
 from core.sse import Final, format_sse, run_agent_streaming
+from core.themes import THEME_CATALOG, get_theme_universe
 from core.track_record import aggregate_stats, log_verdict, score_records, specialist_stats
 from core.tools import (
     DEFAULT_WATCHLIST,
@@ -357,6 +359,46 @@ async def get_team_scan(user: User = Depends(get_current_user)) -> StreamingResp
         try:
             async for result in run_team_scan(candidates, user.id):
                 yield format_sse("result", json.dumps(result))
+        except ValueError as e:
+            yield format_sse("error", json.dumps({"detail": str(e)}))
+
+    return StreamingResponse(event_source(), media_type="text/event-stream")
+
+
+_THEME_PUBLIC_FIELDS = {"key", "name", "description", "risk_level"}
+
+
+@app.get("/themes")
+def list_themes() -> list[dict]:
+    """The fixed theme catalog (see core/themes.py) - static data, no auth
+    needed, same as /watchlist. Excludes source/industry/tickers, which are
+    internal to how get_theme_universe resolves a theme's actual tickers."""
+    return [{k: v for k, v in theme.items() if k in _THEME_PUBLIC_FIELDS} for theme in THEME_CATALOG]
+
+
+@app.get("/themes/history")
+def get_theme_portfolio_history(user: User = Depends(get_current_user), db: DbSession = Depends(get_db)) -> list[dict]:
+    return get_theme_history(db, user.id)
+
+
+@app.get("/themes/{theme_key}/build")
+async def build_theme_portfolio(
+    theme_key: str, amount: float, user: User = Depends(get_current_user), db: DbSession = Depends(get_db)
+) -> StreamingResponse:
+    """Formula-only for now (see agents/theme_builder.py): live market data,
+    no LLM, resolves in seconds. The full Stock Team vetting + AI allocator
+    pass (build_ai_allocation) is disabled here to keep this endpoint fast -
+    the function still exists and is tested, so it's a one-line re-add."""
+    try:
+        tickers = get_theme_universe(theme_key)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
+
+    async def event_source():
+        yield format_sse("candidates", json.dumps({"tickers": tickers}))
+        try:
+            formula_allocation = await asyncio.to_thread(build_formula_allocation, theme_key, amount, tickers, db, user.id)
+            yield format_sse("formula_allocation", json.dumps(formula_allocation))
         except ValueError as e:
             yield format_sse("error", json.dumps({"detail": str(e)}))
 

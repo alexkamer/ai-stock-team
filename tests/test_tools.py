@@ -832,3 +832,26 @@ def test_get_similar_tickers_returns_empty_list_without_industry_or_sector(mock_
     mock_ticker_cls.return_value = make_ticker(info={})
 
     assert tools.get_similar_tickers("SPY") == []
+
+
+@patch("core.tools.yf.Ticker")
+@patch("core.tools.yf.screen")
+def test_screen_by_industry_normalizes_dash_style_before_querying(mock_screen, mock_ticker_cls):
+    mock_ticker_cls.return_value = make_ticker(history=pd.DataFrame({"Close": [100.0, 101.0]}))
+    mock_screen.return_value = {
+        "quotes": [
+            make_quote("AVGO", price=1800.0),
+            make_quote("NVDA", price=219.78),
+        ]
+    }
+
+    tickers = tools.screen_by_industry("Semiconductors", limit=5)
+
+    assert tickers == ["AVGO", "NVDA"]
+    industry_query = mock_screen.call_args_list[0].args[0]
+    assert "Semiconductors" in str(industry_query)
+
+
+def test_screen_by_industry_raises_for_unknown_industry():
+    with pytest.raises(ValueError):
+        tools.screen_by_industry("Not A Real Industry")

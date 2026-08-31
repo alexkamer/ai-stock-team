@@ -1185,6 +1185,35 @@ def get_similar_tickers(ticker: str, limit: int = 8) -> list[dict]:
     return peers
 
 
+def screen_by_industry(industry: str, min_market_cap: float = 2_000_000_000, limit: int = 15) -> list[str]:
+    """Look up the largest US-listed tickers in a given yfinance industry
+    classification, for building a Theme's ticker universe from live data
+    instead of a hand-picked list. Same building blocks as
+    get_similar_tickers's _peers() (canonical value translation, exchange +
+    market-cap floor, sorted by market cap descending) but keyed by a
+    human-readable industry name directly rather than derived from an
+    existing ticker's `.info`.
+
+    Args:
+        industry: Human-readable industry name, e.g. 'Semiconductors'.
+        min_market_cap: Market-cap floor in dollars, to exclude thinly-traded names.
+        limit: Maximum number of tickers to return.
+    """
+    canonical = _canonical_screener_value("industry", industry)
+    if canonical is None:
+        raise ValueError(f"No screener equivalent for industry {industry!r}")
+    query = EquityQuery(
+        "and",
+        [
+            EquityQuery("eq", ["industry", canonical]),
+            EquityQuery("is-in", ["exchange", *_US_MAJOR_EXCHANGES]),
+            EquityQuery("gte", ["intradaymarketcap", min_market_cap]),
+        ],
+    )
+    items, _ = _screen_quotes(query, limit, sortField="intradaymarketcap", sortAsc=False)
+    return [item["ticker"] for item in items]
+
+
 def get_top_etfs(limit: int = 6, offset: int = 0) -> tuple[list[dict], int]:
     """Look up today's top-performing US ETFs, for a "top ETFs" feed.
 
