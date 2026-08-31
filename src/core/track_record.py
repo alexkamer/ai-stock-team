@@ -10,6 +10,7 @@ calendar date.
 
 import bisect
 import json
+from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, timedelta, timezone
 
 import yfinance as yf
@@ -135,9 +136,14 @@ def _price_target_score(record: TeamVerdictRecord, ticker_closes) -> dict | None
     }
 
 
-def score_record(record: TeamVerdictRecord) -> dict:
-    ticker_closes = _closes_since(record.ticker, record.call_date)
-    benchmark_closes = _closes_since(BENCHMARK, record.call_date)
+def score_record(record: TeamVerdictRecord, ticker_closes=None, benchmark_closes=None) -> dict:
+    """ticker_closes/benchmark_closes let a caller scoring many records for
+    the same ticker (score_records below) share one fetch instead of each
+    record re-hitting the network - pass nothing to fetch fresh, as tests do."""
+    if ticker_closes is None:
+        ticker_closes = _closes_since(record.ticker, record.call_date)
+    if benchmark_closes is None:
+        benchmark_closes = _closes_since(BENCHMARK, record.call_date)
     benchmark_at_call = _price_on_or_after(benchmark_closes, record.call_date)
 
     def _score_as_of(target_date: date) -> dict | None:
@@ -191,6 +197,33 @@ def score_record(record: TeamVerdictRecord) -> dict:
         "price_target": _price_target_score(record, ticker_closes),
         "specialist_calls": specialist_calls,
     }
+
+
+def score_records(records: list[TeamVerdictRecord]) -> list[dict]:
+    """Scores many records while fetching each distinct ticker's history
+    (and the SPY benchmark) only once, in parallel - score_record alone
+    would re-fetch both per record, which is what made /track-record slow
+    with more than a couple of logged calls."""
+    if not records:
+        return []
+
+    earliest_call_date_by_ticker = {}
+    for record in records:
+        earliest = earliest_call_date_by_ticker.get(record.ticker)
+        if earliest is None or record.call_date < earliest:
+            earliest_call_date_by_ticker[record.ticker] = record.call_date
+    earliest_call_date_by_ticker[BENCHMARK] = min(earliest_call_date_by_ticker.values())
+
+    with ThreadPoolExecutor(max_workers=len(earliest_call_date_by_ticker)) as pool:
+        closes_by_symbol = dict(
+            zip(
+                earliest_call_date_by_ticker,
+                pool.map(lambda item: _closes_since(*item), earliest_call_date_by_ticker.items()),
+            )
+        )
+
+    benchmark_closes = closes_by_symbol[BENCHMARK]
+    return [score_record(record, closes_by_symbol[record.ticker], benchmark_closes) for record in records]
 
 
 def aggregate_stats(scored_records: list[dict]) -> dict:
