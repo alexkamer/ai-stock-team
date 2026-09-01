@@ -14,6 +14,7 @@ An AI-powered stock research app built with [pydantic-ai](https://ai.pydantic.de
   - [Configuring the AI model](#configuring-the-ai-model)
   - [Connecting SnapTrade](#connecting-snaptrade)
 - [Running it](#running-it)
+  - [A note on yfinance rate limiting](#a-note-on-yfinance-rate-limiting)
 - [Tour of the web app](#tour-of-the-web-app)
 - [Tests](#tests)
 - [Project layout](#project-layout)
@@ -161,6 +162,35 @@ make frontend
 Or run both at once with `make dev` (Ctrl-C stops both). The Vite dev
 server proxies `/api` to the backend, so run both together while
 developing. Once both are up, open `http://localhost:5173`.
+
+### A note on yfinance rate limiting
+
+Every price/fundamentals lookup in this app goes through
+[yfinance](https://github.com/ranaroussi/yfinance), which scrapes Yahoo
+Finance's internal web endpoints rather than calling an official,
+key-authenticated API. There's no published rate limit and no SLA - under
+enough sustained traffic (e.g. loading the Themes tab, which pulls
+price/EPS/volatility data across the whole catalog's tickers) Yahoo will
+start rejecting requests, in a couple of different ways:
+
+- **`Too Many Requests. Rate limited.`** - a plain rate limit. Usually
+  clears on its own within a few minutes.
+- **`Invalid Crumb`** - Yahoo revoked the session token yfinance uses
+  internally. Once this starts, every subsequent call fails until yfinance
+  gets a fresh one - which in practice means **restarting the backend
+  process** (`make backend`/`make dev` again), not just waiting.
+- **`User is unable to access this feature`** - a harder block, one level
+  up from a plain rate limit. Same fix: restart, then back off for a bit.
+
+None of these crash the app - every yfinance call site either falls back to
+`null`/omits that item, or (for the handful of direct `.history()`/`.info`
+calls) retries a couple of times with backoff first (`with_yf_retries` in
+`src/core/tools.py`). You'll just see blank cells/missing data on whatever
+got rate-limited until it clears. If you're iterating on backend code with
+`--reload`, note that every file save restarts the process and wipes all
+the in-memory caches (`core/tools.py`'s `_info_cache`, `core/themes.py`'s
+`_universe_cache`, `agents/theme_builder.py`'s `_summary_cache`), so heavy
+editing sessions will hit this more than normal usage does.
 
 ## Tour of the web app
 
