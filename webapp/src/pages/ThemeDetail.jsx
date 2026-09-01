@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { getJSON, postJSON } from '../api/client'
+import { parseServerDate } from '../lib/serverDate'
 import ThemePerformanceChart from '../components/ThemePerformanceChart'
 import '../components/ToolCallPill.css'
 import './StockTeam.css'
@@ -100,7 +101,7 @@ function ThemeMeta({ suggestion }) {
     <div className="themes__meta">
       <p className="themes__summary">{suggestion.summary}</p>
       <p className="themes__generated-label">
-        Live since {new Date(stamp).toLocaleString()}
+        Live since {parseServerDate(stamp).toLocaleString()}
         {suggestion.candidate && ' · a newer version is pending above'}
       </p>
     </div>
@@ -184,7 +185,7 @@ function CandidateBanner({ candidate, onUpdate, updating }) {
           {updating ? 'Updating…' : 'Update theme'}
         </button>
       </div>
-      <p className="themes__generated-label">Generated {new Date(candidate.generated_at).toLocaleString()}</p>
+      <p className="themes__generated-label">Generated {parseServerDate(candidate.generated_at).toLocaleString()}</p>
       <p className="themes__summary">{candidate.summary}</p>
       {quality_delta != null && (
         <p className="themes__candidate-quality">

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { getJSON } from '../api/client'
+import { parseServerDate } from '../lib/serverDate'
 import './StockTeam.css'
 import './Scan.css'
 import './Themes.css'
@@ -36,7 +37,7 @@ function hasPendingUpdate(candidate) {
 /** Compact "3d ago"/"2h ago" - a full timestamp is too wide for a list
  * row, unlike the detail page which has room for `toLocaleString()`. */
 function timeAgo(iso) {
-  const diffMs = Date.now() - new Date(iso).getTime()
+  const diffMs = Date.now() - parseServerDate(iso).getTime()
   const minutes = Math.round(diffMs / 60000)
   if (minutes < 60) return `${Math.max(minutes, 0)}m ago`
   const hours = Math.round(minutes / 60)
