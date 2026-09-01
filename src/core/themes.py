@@ -223,6 +223,7 @@ THEME_CATALOG = [
         ],
         "tickers": [
             "IONQ", "RGTI", "QBTS", "IBM", "GOOGL", "HON", "ARQQ",
+            "MSFT", "AMZN", "NVDA", "INTC",
         ],
     },
     {
@@ -233,6 +234,7 @@ THEME_CATALOG = [
         "source": "seed",
         "tickers": [
             "CEG", "VST", "NRG", "CCJ", "SMR", "OKLO", "BWXT", "UEC", "LEU",
+            "EXC", "DNN", "UUUU",
         ],
     },
     {
@@ -243,6 +245,7 @@ THEME_CATALOG = [
         "source": "seed",
         "tickers": [
             "VRT", "ETN", "EQIX", "DLR", "MOD", "VST", "PWR", "NVT", "AVAV",
+            "AMT", "CCI", "IRM",
         ],
     },
     {
@@ -253,6 +256,7 @@ THEME_CATALOG = [
         "source": "seed",
         "tickers": [
             "PG", "KO", "PEP", "CL", "WMT", "COST", "MDLZ", "KMB",
+            "MO", "PM", "GIS",
         ],
     },
     {
@@ -263,6 +267,7 @@ THEME_CATALOG = [
         "source": "seed",
         "tickers": [
             "PGR", "TRV", "ALL", "CB", "MET", "PRU", "AIG",
+            "HIG", "AFL", "L",
         ],
     },
     {
@@ -273,6 +278,7 @@ THEME_CATALOG = [
         "source": "seed",
         "tickers": [
             "DKNG", "FLUT", "MGM", "CZR", "PENN", "LVS",
+            "BYD", "RSI", "CHDN", "WMS",
         ],
     },
     {
@@ -283,6 +289,7 @@ THEME_CATALOG = [
         "source": "seed",
         "tickers": [
             "FCX", "NEM", "SCCO", "AA", "CLF",
+            "AEM", "GOLD", "MP", "NUE", "STLD",
         ],
     },
 ]
