@@ -339,7 +339,15 @@ def refresh_theme_suggestion(theme_key: str, db: DbSession) -> dict:
         f"{len(ranked)} of this theme's {len(tickers)} tickers had usable data."
     )
 
-    db.query(ThemeSuggestion).filter(ThemeSuggestion.theme_key == theme_key, ThemeSuggestion.status == status).delete()
+    # ORM-level delete (not Query.delete()) so cascade="all, delete-orphan"
+    # actually fires on the old row's picks - a bulk Query.delete() skips
+    # the ORM entirely, orphaning the picks, and SQLite can then reuse the
+    # deleted row's id for the new ThemeSuggestion below, silently
+    # reattaching the orphaned picks to it (duplicate tickers, doubled
+    # weight/dollar amounts).
+    for old in db.query(ThemeSuggestion).filter(ThemeSuggestion.theme_key == theme_key, ThemeSuggestion.status == status):
+        db.delete(old)
+    db.flush()
     suggestion = ThemeSuggestion(
         theme_key=theme_key,
         status=status,
@@ -378,7 +386,9 @@ def promote_theme_suggestion(theme_key: str, db: DbSession) -> dict:
     tickers = [p.ticker for p in candidate.picks]
     fresh_prices = _fetch_current_prices(tickers)
 
-    db.query(ThemeSuggestion).filter(ThemeSuggestion.theme_key == theme_key, ThemeSuggestion.status == "live").delete()
+    for old_live in db.query(ThemeSuggestion).filter(ThemeSuggestion.theme_key == theme_key, ThemeSuggestion.status == "live"):
+        db.delete(old_live)
+    db.flush()
     candidate.status = "live"
     candidate.promoted_at = _now()
     for pick in candidate.picks:
