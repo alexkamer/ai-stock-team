@@ -554,6 +554,42 @@ def _version_return_index(picks: list[ThemeSuggestionPick], start: date, end: da
     return weighted.sum(axis=1).dropna()
 
 
+_BENCHMARK_TICKER = "SPY"
+
+
+def _benchmark_series(point_dates: list[str], ticker: str = _BENCHMARK_TICKER) -> list[float | None]:
+    """The benchmark's own return index (single ticker, no picks, no
+    chain-linking across theme versions) resampled onto the theme's exact
+    point dates - the "vs S&P 500" comparison line. Indexed to 100 at the
+    theme's own first point so the two lines start together, not at
+    SPY's own price history. None for a point the benchmark can't cover
+    yet (before its own first close), left out of the response rather
+    than zero-filled."""
+    if not point_dates:
+        return []
+
+    has_intraday = any("T" in d for d in point_dates)
+    first_day = date.fromisoformat(point_dates[0].split("T")[0])
+
+    daily = _closes_from(ticker, first_day)
+    if daily is None:
+        return [None] * len(point_dates)
+    daily = daily.sort_index()
+    intraday = _intraday_closes_from(ticker).sort_index() if has_intraday else None
+
+    base = float(daily.iloc[0])
+    values: list[float | None] = []
+    for d in point_dates:
+        if "T" in d:
+            ts = datetime.fromisoformat(d)
+            matches = intraday.index[intraday.index <= ts] if intraday is not None else []
+        else:
+            matches = daily.index[daily.index <= date.fromisoformat(d)]
+        price = float((intraday if "T" in d else daily).loc[matches[-1]]) if len(matches) else None
+        values.append(round(price / base * 100, 3) if price is not None else None)
+    return values
+
+
 def get_theme_performance(theme_key: str, db: DbSession) -> dict:
     """Reconstructs a theme's full profit/loss history from real
     historical closes, not a stored snapshot - one version at a time
@@ -563,7 +599,9 @@ def get_theme_performance(theme_key: str, db: DbSession) -> dict:
     convention a rebalanced index's return series follows. `updates`
     marks each version's start date - the first entry is the theme's
     original buy-in, not an "update," so a caller rendering divider lines
-    should skip index 0."""
+    should skip index 0. Each point also carries a `benchmark` value - the
+    S&P 500 (SPY), indexed to 100 at the same starting point, for an
+    apples-to-apples "vs the market" comparison line."""
     versions = (
         db.query(ThemeSuggestion)
         .filter(
@@ -605,6 +643,10 @@ def get_theme_performance(theme_key: str, db: DbSession) -> dict:
         points.extend(new_points)
         cursor_level = float(scaled.iloc[-1])
         updates.append({"date": start.isoformat(), "tickers": sorted(p.ticker for p in version.picks)})
+
+    benchmark_values = _benchmark_series([p["date"] for p in points])
+    for point, benchmark_value in zip(points, benchmark_values):
+        point["benchmark"] = benchmark_value
 
     return {"theme_key": theme_key, "points": points, "updates": updates}
 

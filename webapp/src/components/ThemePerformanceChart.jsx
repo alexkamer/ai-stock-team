@@ -8,6 +8,23 @@ function pathFromPoints(pts) {
   return pts.map(([x, y], i) => `${i === 0 ? 'M' : 'L'}${x},${y}`).join(' ')
 }
 
+// Benchmark coords can have gaps (a point the benchmark ticker has no
+// price for yet) - breaks the path into separate M-started segments
+// around them instead of drawing a straight line across the gap.
+function pathWithGaps(coords) {
+  let d = ''
+  let drawing = false
+  for (const c of coords) {
+    if (c == null) {
+      drawing = false
+      continue
+    }
+    d += `${drawing ? 'L' : (d ? ' ' : '') + 'M'}${c[0]},${c[1]} `
+    drawing = true
+  }
+  return d.trim()
+}
+
 // Daily points are date-only ("2026-09-01"); the same-day intraday
 // fallback (see agents/theme_builder.py's _intraday_version_return_index)
 // produces full timestamps instead - those read better as a time than a
@@ -25,12 +42,12 @@ function formatAxisPercent(v) {
 }
 
 /**
- * Single-series index chart of a theme's P/L since it was first bought,
- * chain-linked across every "Update theme" version (see
- * agents/theme_builder.py's get_theme_performance) - a dashed marker at
- * each update date, gridlines, a dashed 100 (buy-in) reference line, and
- * a hover crosshair + tooltip (dataviz skill's interaction rule for any
- * line chart). One series, so no legend box - the heading names it.
+ * Two-series index chart: a theme's P/L since it was first bought,
+ * chain-linked across every "Update theme" version, against the S&P 500
+ * over the same window (see agents/theme_builder.py's
+ * get_theme_performance) - a dashed marker at each update date,
+ * gridlines, a dashed 0% (buy-in) reference line, and a hover crosshair +
+ * tooltip (dataviz skill's interaction rule for any line chart).
  */
 export default function ThemePerformanceChart({ points, updates, loading }) {
   const [hoverIndex, setHoverIndex] = useState(null)
@@ -44,9 +61,10 @@ export default function ThemePerformanceChart({ points, updates, loading }) {
 
   const hasData = points && points.length > 1
   const values = hasData ? points.map((p) => p.value) : [BASELINE]
+  const benchmarkValues = hasData ? points.map((p) => p.benchmark).filter((v) => v != null) : []
 
-  const rawMin = Math.min(...values, BASELINE)
-  const rawMax = Math.max(...values, BASELINE)
+  const rawMin = Math.min(...values, ...benchmarkValues, BASELINE)
+  const rawMax = Math.max(...values, ...benchmarkValues, BASELINE)
   const rawRange = rawMax - rawMin || 1
   const min = rawMin - rawRange * 0.1
   const max = rawMax + rawRange * 0.1
@@ -57,13 +75,18 @@ export default function ThemePerformanceChart({ points, updates, loading }) {
 
   const toXY = (v, i) => [padLeft + i * stepX, padTop + plotHeight * (1 - (v - min) / range)]
   const coords = hasData ? points.map((p, i) => toXY(p.value, i)) : []
+  const benchmarkCoords = hasData ? points.map((p, i) => (p.benchmark == null ? null : toXY(p.benchmark, i))) : []
   const baselineY = padTop + plotHeight * (1 - (BASELINE - min) / range)
 
   const finalValue = hasData ? points[points.length - 1].value : BASELINE
   const lineColor = finalValue >= BASELINE ? 'var(--good)' : 'var(--critical)'
   const totalChangePercent = finalValue - BASELINE
 
+  const finalBenchmarkValue = benchmarkValues.length ? benchmarkValues[benchmarkValues.length - 1] : null
+  const totalBenchmarkChangePercent = finalBenchmarkValue != null ? finalBenchmarkValue - BASELINE : null
+
   const linePath = hasData ? pathFromPoints(coords) : ''
+  const benchmarkLinePath = hasData ? pathWithGaps(benchmarkCoords) : ''
   const areaPath = hasData
     ? `M${coords[0][0]},${baselineY} ` + coords.map(([x, y]) => `L${x},${y}`).join(' ') + ` L${coords[coords.length - 1][0]},${baselineY} Z`
     : ''
@@ -104,10 +127,18 @@ export default function ThemePerformanceChart({ points, updates, loading }) {
       <div className="theme-perf-chart__header">
         <h4>Performance since buy-in</h4>
         {hasData && (
-          <span className={`theme-perf-chart__total num theme-perf-chart__total--${totalChangePercent >= 0 ? 'up' : 'down'}`}>
-            {totalChangePercent >= 0 ? '+' : ''}
-            {totalChangePercent.toFixed(2)}%
-          </span>
+          <div className="theme-perf-chart__totals">
+            <span className={`theme-perf-chart__total num theme-perf-chart__total--${totalChangePercent >= 0 ? 'up' : 'down'}`}>
+              {totalChangePercent >= 0 ? '+' : ''}
+              {totalChangePercent.toFixed(2)}%
+            </span>
+            {totalBenchmarkChangePercent != null && (
+              <span className="theme-perf-chart__total-benchmark num">
+                S&amp;P 500 {totalBenchmarkChangePercent >= 0 ? '+' : ''}
+                {totalBenchmarkChangePercent.toFixed(2)}%
+              </span>
+            )}
+          </div>
         )}
       </div>
       {!hasData ? (
@@ -128,7 +159,7 @@ export default function ThemePerformanceChart({ points, updates, loading }) {
             }}
             onTouchEnd={() => setHoverIndex(null)}
             role="img"
-            aria-label="Theme performance since buy-in"
+            aria-label="Theme performance vs the S&P 500 since buy-in"
           >
             <defs>
               <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
@@ -180,6 +211,15 @@ export default function ThemePerformanceChart({ points, updates, loading }) {
             ))}
 
             <path d={areaPath} fill={`url(#${gradientId})`} />
+            <path
+              d={benchmarkLinePath}
+              fill="none"
+              stroke="var(--text-secondary)"
+              strokeWidth="1.5"
+              strokeDasharray="5 3"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
             <path d={linePath} fill="none" stroke={lineColor} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
 
             {hoverIndex !== null && (
@@ -193,6 +233,9 @@ export default function ThemePerformanceChart({ points, updates, loading }) {
                   strokeWidth="1"
                 />
                 <circle cx={coords[hoverIndex][0]} cy={coords[hoverIndex][1]} r="4" fill={lineColor} />
+                {benchmarkCoords[hoverIndex] != null && (
+                  <circle cx={benchmarkCoords[hoverIndex][0]} cy={benchmarkCoords[hoverIndex][1]} r="3.5" fill="var(--text-secondary)" />
+                )}
               </>
             )}
           </svg>
@@ -202,16 +245,34 @@ export default function ThemePerformanceChart({ points, updates, loading }) {
                 {points[hoverIndex].value >= BASELINE ? '+' : ''}
                 {(points[hoverIndex].value - BASELINE).toFixed(2)}%
               </span>
+              {points[hoverIndex].benchmark != null && (
+                <span className="num theme-perf-chart__tooltip-benchmark">
+                  S&amp;P {points[hoverIndex].benchmark >= BASELINE ? '+' : ''}
+                  {(points[hoverIndex].benchmark - BASELINE).toFixed(2)}%
+                </span>
+              )}
               <span className="theme-perf-chart__tooltip-date">{formatDate(points[hoverIndex].date)}</span>
             </div>
           )}
         </div>
       )}
-      {updateMarkers.length > 0 && (
-        <p className="theme-perf-chart__legend">
-          <span className="theme-perf-chart__legend-swatch" /> Update theme
-        </p>
-      )}
+      <div className="theme-perf-chart__legend">
+        {hasData && (
+          <span className="theme-perf-chart__legend-item">
+            <span className="theme-perf-chart__legend-swatch theme-perf-chart__legend-swatch--theme" /> Theme
+          </span>
+        )}
+        {benchmarkValues.length > 0 && (
+          <span className="theme-perf-chart__legend-item">
+            <span className="theme-perf-chart__legend-swatch theme-perf-chart__legend-swatch--benchmark" /> S&amp;P 500
+          </span>
+        )}
+        {updateMarkers.length > 0 && (
+          <span className="theme-perf-chart__legend-item">
+            <span className="theme-perf-chart__legend-swatch theme-perf-chart__legend-swatch--update" /> Update theme
+          </span>
+        )}
+      </div>
     </div>
   )
 }
