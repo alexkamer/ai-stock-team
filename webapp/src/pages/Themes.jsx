@@ -41,7 +41,7 @@ function formatInceptionDate(dateOnlyIso) {
 // Themes.css's row grid used to (see the git history for that layout);
 // here it's a real <table> so alignment comes from the columns
 // themselves.
-function ThemeRow({ theme, summary }) {
+function ThemeRow({ theme, summary, summariesLoading }) {
   const navigate = useNavigate()
   const previewTickers = summary?.preview_tickers ?? []
   const hasMore = (summary?.stock_count ?? 0) > previewTickers.length
@@ -57,6 +57,8 @@ function ThemeRow({ theme, summary }) {
                 {summary.stock_count} Stock{summary.stock_count === 1 ? '' : 's'}
                 {previewTickers.length > 0 && ` - ${previewTickers.join(', ')}${hasMore ? '...' : ''}`}
               </>
+            ) : summariesLoading ? (
+              'Loading…'
             ) : (
               'Not ready yet'
             )}
@@ -93,12 +95,15 @@ function ThemeRow({ theme, summary }) {
 export default function Themes() {
   const [themes, setThemes] = useState([])
   const [summaries, setSummaries] = useState({})
+  const [summariesLoading, setSummariesLoading] = useState(true)
+  const [summariesError, setSummariesError] = useState(false)
 
   useEffect(() => {
     getJSON('/themes').then(setThemes).catch(() => {})
     getJSON('/themes/summary')
       .then((rows) => setSummaries(Object.fromEntries(rows.map((row) => [row.key, row]))))
-      .catch(() => {})
+      .catch(() => setSummariesError(true))
+      .finally(() => setSummariesLoading(false))
   }, [])
 
   return (
@@ -112,6 +117,19 @@ export default function Themes() {
           </p>
         </div>
       </div>
+
+      {summariesLoading && (
+        <p className="scan__empty">
+          Loading return/volatility data across every theme - this pulls live market data for every ticker in the
+          catalog, so a cold load can take up to a minute. It's cached after that.
+        </p>
+      )}
+      {summariesError && (
+        <div className="error-banner">
+          Couldn't load market data for the themes below (Yahoo Finance may be rate-limiting right now) - theme names
+          and descriptions still work, try refreshing in a bit for the rest.
+        </div>
+      )}
 
       <div className="card scan__table-card themes__summary-table-card">
         <table className="scan__table themes__summary-table">
@@ -128,7 +146,7 @@ export default function Themes() {
           </thead>
           <tbody>
             {themes.map((theme) => (
-              <ThemeRow key={theme.key} theme={theme} summary={summaries[theme.key]} />
+              <ThemeRow key={theme.key} theme={theme} summary={summaries[theme.key]} summariesLoading={summariesLoading} />
             ))}
           </tbody>
         </table>

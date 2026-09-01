@@ -59,6 +59,18 @@ def parallel_map(fn: Callable[[_T], _R], items: Iterable[_T]) -> list[_R]:
 _YF_RETRY_ATTEMPTS = 3
 _YF_RETRY_BASE_DELAY_SECONDS = 1.5
 
+# A sustained block (not a transient blip) is exactly where retry-with-
+# backoff backfires: multiplied across the ~150-250 tickers a single
+# /themes/summary call touches, every one of them separately paying the
+# full 1.5s+3s backoff before giving up turns "Yahoo is down" into "the
+# page looks hung for several minutes." This is a bare-bones circuit
+# breaker - once a call exhausts every retry, every subsequent call fails
+# fast (one attempt, no backoff) for _YF_CIRCUIT_COOLDOWN_SECONDS, so a
+# real block degrades quickly instead of slowly. Any success closes the
+# circuit immediately.
+_YF_CIRCUIT_COOLDOWN_SECONDS = 30.0
+_yf_circuit_open_until = 0.0
+
 
 def with_yf_retries(fn: Callable[[], _R]) -> _R:
     """Retries a yfinance call with exponential backoff - real usage
@@ -68,15 +80,26 @@ def with_yf_retries(fn: Callable[[], _R]) -> _R:
     human manually retrying would. Only smooths over *transient* failures -
     a sustained block still exhausts all attempts and raises, same as
     before, so callers' existing except-and-fall-back-to-None handling
-    still applies."""
+    still applies. Skips retrying altogether (fails fast) while the
+    circuit breaker above is open."""
+    global _yf_circuit_open_until
+
+    if monotonic() < _yf_circuit_open_until:
+        result = fn()  # let a failure raise straight through - no point retrying while the circuit's open
+        _yf_circuit_open_until = 0.0  # a success this soon means Yahoo's already back - close it early
+        return result
+
     last_error: Exception | None = None
     for attempt in range(_YF_RETRY_ATTEMPTS):
         try:
-            return fn()
+            result = fn()
+            _yf_circuit_open_until = 0.0
+            return result
         except Exception as e:  # noqa: BLE001 - deliberately broad, see docstring
             last_error = e
             if attempt < _YF_RETRY_ATTEMPTS - 1:
                 time_module.sleep(_YF_RETRY_BASE_DELAY_SECONDS * (2**attempt))
+    _yf_circuit_open_until = monotonic() + _YF_CIRCUIT_COOLDOWN_SECONDS
     raise last_error
 
 
