@@ -497,6 +497,38 @@ def _closes_from(ticker: str, start: date) -> pd.Series | None:
     return closes
 
 
+def _intraday_closes_from(ticker: str) -> pd.Series | None:
+    """5-minute closes for today's session, timestamp-indexed (tz dropped -
+    exchange-local wall-clock, same reasoning as _closes_from). Only used
+    as a same-day fallback (see _version_return_index) for a theme
+    promoted too recently to have even two daily closes yet - without
+    this, a theme that's an hour old has exactly one daily data point and
+    the chart has nothing to draw a line between."""
+    history = yf.Ticker(ticker).history(period="1d", interval="5m")
+    if history.empty:
+        return None
+    closes = history["Close"]
+    closes.index = closes.index.tz_localize(None)
+    return closes
+
+
+def _intraday_version_return_index(picks: list[ThemeSuggestionPick]) -> pd.Series:
+    weights = {p.ticker: p.weight_percent / 100 for p in picks}
+    buy_prices = {p.ticker: p.price_at_buy for p in picks}
+
+    def _fetch(ticker: str) -> tuple[str, pd.Series | None]:
+        return ticker, _intraday_closes_from(ticker)
+
+    series_by_ticker = {t: s for t, s in parallel_map(_fetch, list(weights)) if s is not None}
+    if not series_by_ticker:
+        return pd.Series(dtype=float)
+
+    frame = pd.DataFrame(series_by_ticker).sort_index().ffill()
+    normalized = frame.divide(pd.Series(buy_prices))
+    weighted = normalized.multiply(pd.Series(weights))
+    return weighted.sum(axis=1).dropna()
+
+
 def _version_return_index(picks: list[ThemeSuggestionPick], start: date, end: date | None) -> pd.Series:
     """One suggestion version's daily weighted return index: for each
     trading day, Σ weight_percent/100 * (that day's close / price_at_buy)
@@ -548,10 +580,19 @@ def get_theme_performance(theme_key: str, db: DbSession) -> dict:
     points: list[dict] = []
     updates: list[dict] = []
     cursor_level = 100.0  # indexed to 100 at the start, like a normal total-return index, not a raw 1.0 multiplier
-    for version in versions:
+    for i, version in enumerate(versions):
         start = version.promoted_at.date()
         end = version.retired_at.date() if version.retired_at else None
         series = _version_return_index(version.picks, start, end)
+        # A theme promoted today has at most one daily close so far - not
+        # enough to draw a line. Only worth the extra intraday fetch for
+        # the current, still-live version (older/retired versions have
+        # had time to accumulate real daily history by now).
+        is_current_and_fresh = i == len(versions) - 1 and version.retired_at is None and start == date.today()
+        if len(series) < 2 and is_current_and_fresh:
+            intraday = _intraday_version_return_index(version.picks)
+            if len(intraday) >= 2:
+                series = intraday
         if series.empty:
             continue
         scaled = series / series.iloc[0] * cursor_level

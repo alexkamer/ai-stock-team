@@ -8,8 +8,20 @@ function pathFromPoints(pts) {
   return pts.map(([x, y], i) => `${i === 0 ? 'M' : 'L'}${x},${y}`).join(' ')
 }
 
+// Daily points are date-only ("2026-09-01"); the same-day intraday
+// fallback (see agents/theme_builder.py's _intraday_version_return_index)
+// produces full timestamps instead - those read better as a time than a
+// date since they're all from today.
 function formatDate(iso) {
+  if (iso.includes('T')) {
+    return new Date(iso).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
+  }
   return new Date(`${iso}T00:00:00`).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+}
+
+function formatAxisPercent(v) {
+  const pct = v - BASELINE
+  return `${pct > 0 ? '+' : ''}${pct.toFixed(2)}%`
 }
 
 /**
@@ -100,7 +112,7 @@ export default function ThemePerformanceChart({ points, updates, loading }) {
       </div>
       {!hasData ? (
         <p className="theme-perf-chart__empty">
-          {loading ? 'Loading…' : "Not enough history yet - check back after this theme's been live a few trading days."}
+          {loading ? 'Loading…' : "No price data yet - check back once the market's open."}
         </p>
       ) : (
         <div className="theme-perf-chart__plot">
@@ -131,7 +143,7 @@ export default function ThemePerformanceChart({ points, updates, loading }) {
                 <g key={i}>
                   <line x1={padLeft} x2={width - padRight} y1={y} y2={y} stroke="var(--border)" strokeWidth="1" strokeDasharray="3 4" />
                   <text x={width - padRight + 8} y={y} dy="3" className="theme-perf-chart__axis-label">
-                    {v.toFixed(1)}
+                    {formatAxisPercent(v)}
                   </text>
                 </g>
               )
@@ -139,7 +151,7 @@ export default function ThemePerformanceChart({ points, updates, loading }) {
 
             <line x1={padLeft} x2={width - padRight} y1={baselineY} y2={baselineY} stroke="var(--text-muted)" strokeWidth="1" strokeDasharray="4 3" />
             <text x={padLeft + 4} y={baselineY} dy={-4} className="theme-perf-chart__axis-label">
-              100 (buy-in)
+              0.00% (buy-in)
             </text>
 
             {dateLabelIndices.map((idx, i) => (
