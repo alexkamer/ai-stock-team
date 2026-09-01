@@ -15,47 +15,32 @@ function RiskBadge({ level }) {
   return <span className={`risk-badge risk-badge--${level}`}>{RISK_LABEL[level] ?? level}</span>
 }
 
-const RISK_EXPLANATION = {
-  lower: 'large, cash-generative companies that tend to move less than the rest of the catalog - but it’s still a concentrated equity basket, not a bond fund.',
-  moderate: 'an established, real-revenue business tied to one theme rather than broadly diversified across sectors - steadier than a speculative bet, but not immune to a bad quarter.',
-  higher: 'early-stage, cyclical, or fast-moving businesses where prices can swing hard in either direction - the tradeoff for the theme’s upside.',
+function formatSimpleDate(dateOnlyIso) {
+  return new Date(`${dateOnlyIso}T00:00:00`).toLocaleDateString(undefined, {
+    year: 'numeric',
+    month: 'numeric',
+    day: 'numeric',
+  })
 }
 
-function sourceExplanation(theme) {
-  if (theme.source === 'industry') {
-    return `This basket comes from a live screen of Yahoo Finance's "${theme.industry}" industry classification, filtered to the largest companies by market cap - so it tracks who's actually in the industry today rather than a fixed list that goes stale as companies get acquired or delisted.`
-  }
-  if (theme.source === 'filings') {
-    return "This basket starts from a keyword search across SEC filings for language tied to this theme, then an AI model scores each candidate for how central the theme actually is to that company's business - so it reflects what companies say about themselves, not just a name association. A hand-picked fallback list covers the gap until that scoring job has run for this theme."
-  }
-  return "This basket is a hand-curated list of tickers - this theme spans more than one industry classification, so no single live screen captures it cleanly."
-}
-
-function AboutTheme({ theme }) {
+// inceptionDate comes from performance.updates[0] (a plain "YYYY-MM-DD" -
+// the first version's own promoted_at.date()); lastUpdatedIso comes from
+// suggestion.promoted_at/generated_at, a naive-UTC backend timestamp, so
+// it needs parseServerDate first, unlike inceptionDate.
+function AboutTheme({ theme, inceptionDate, lastUpdatedIso }) {
   if (!theme) return null
   return (
     <div className="card themes__about">
-      <h4>About this theme</h4>
-      <p>{theme.description}</p>
-      {theme.risk_level && (
-        <p>
-          It's tagged <strong>{RISK_LABEL[theme.risk_level] ?? theme.risk_level}</strong> in this catalog: {RISK_EXPLANATION[theme.risk_level]}
-        </p>
-      )}
-      <p>{sourceExplanation(theme)}</p>
-      <p>
-        Within that universe, each ticker's weight comes from a repeatable formula - a blend of 3-month price
-        momentum and market capitalization, not a subjective pick - and no single ticker can exceed 35% of the
-        basket, so one runaway stock can't dominate the whole allocation.
-      </p>
-      <p>
-        The basket re-ranks on a schedule using live market data. When a new candidate differs meaningfully from
-        what's currently live, you'll see an "updated version available" banner below - nothing changes until it's
-        promoted, so everyone sees the same basket between updates.
-      </p>
+      <h4>About {theme.name}</h4>
+      <div className="themes__about-meta">
+        {inceptionDate && <span>Inception date: {formatSimpleDate(inceptionDate)}</span>}
+        {lastUpdatedIso && <span>Basket last updated: {parseServerDate(lastUpdatedIso).toLocaleDateString()}</span>}
+      </div>
+      {(theme.about ?? theme.description).split('\n\n').map((paragraph, i) => (
+        <p key={i}>{paragraph}</p>
+      ))}
       <p className="themes__disclaimer">
-        This is a research starting point meant to explain the thinking behind the basket, not personalized
-        investment advice.
+        This is a summary of the theme's investment case, not personalized investment advice.
       </p>
     </div>
   )
@@ -353,7 +338,11 @@ export default function ThemeDetail() {
         <ThemePerformanceChart points={performance?.points} updates={performance?.updates} loading={performanceLoading} />
       </div>
 
-      <AboutTheme theme={theme} />
+      <AboutTheme
+        theme={theme}
+        inceptionDate={performance?.updates?.[0]?.date}
+        lastUpdatedIso={suggestion?.promoted_at ?? suggestion?.generated_at}
+      />
 
       <div className="card themes__build">
         <div className="themes__build-row">

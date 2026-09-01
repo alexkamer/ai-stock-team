@@ -365,7 +365,7 @@ async def get_team_scan(user: User = Depends(get_current_user)) -> StreamingResp
     return StreamingResponse(event_source(), media_type="text/event-stream")
 
 
-_THEME_PUBLIC_FIELDS = {"key", "name", "description", "risk_level", "source", "industry"}
+_THEME_PUBLIC_FIELDS = {"key", "name", "description", "about", "risk_level", "source", "industry"}
 
 
 @app.get("/themes")

@@ -145,8 +145,17 @@
 
 .themes__about h4 {
   margin: 0;
-  font-size: 13px;
-  color: var(--text-secondary);
+  font-size: 15px;
+  color: var(--text-primary);
+}
+
+.themes__about-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-family: var(--mono);
 }
 
 .themes__about p {
