@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react'
-import { getJSON, postJSON } from '../api/client'
-import ThemePerformanceChart from '../components/ThemePerformanceChart'
-import '../components/ToolCallPill.css'
+import { Link } from 'react-router-dom'
+import { getJSON } from '../api/client'
 import './StockTeam.css'
 import './Scan.css'
 import './Themes.css'
@@ -13,291 +12,83 @@ function RiskBadge({ level }) {
   return <span className={`risk-badge risk-badge--${level}`}>{RISK_LABEL[level] ?? level}</span>
 }
 
-function ThemeCard({ theme, selected, onSelect }) {
-  return (
-    <button
-      type="button"
-      className={`card themes__card themes__card--${theme.risk_level}${selected ? ' themes__card--selected' : ''}`}
-      onClick={() => onSelect(theme.key)}
-    >
-      <h3>{theme.name}</h3>
-      <p>{theme.description}</p>
-      <RiskBadge level={theme.risk_level} />
-    </button>
-  )
-}
-
-function PriceChangeCell({ pick }) {
-  if (pick.price_at_buy == null) {
-    return <span className="themes__price-detail">—</span>
-  }
-  const direction = pick.change_percent > 0 ? 'up' : pick.change_percent < 0 ? 'down' : 'flat'
-  return (
-    <div className="themes__price-cell">
-      {pick.current_price != null ? (
-        <span className={`themes__price-change themes__price-change--${direction}`}>
-          {pick.change_percent > 0 ? '+' : ''}
-          {pick.change_percent.toFixed(2)}%
-        </span>
-      ) : (
-        <span className="themes__price-detail">—</span>
-      )}
-      <span className="themes__price-detail">
-        ${pick.price_at_buy.toFixed(2)}
-        {pick.current_price != null ? ` → $${pick.current_price.toFixed(2)}` : ''}
-      </span>
-    </div>
-  )
-}
-
-/** Dollar-weighted total return across all picks with a known price_at_buy
- * and current_price - picks missing either are excluded from both totals
- * so they don't drag it toward zero. */
-function totalSinceBuy(picks) {
+/** Dollar-weighted since-buy return - weight_percent stands in for a dollar
+ * amount here (same ratios, no amount typed in on this list page) so this
+ * is the same formula ThemeDetail.jsx uses to total up its allocation
+ * table, just without a concrete dollar figure. */
+function sinceBuyPercent(picks) {
   let invested = 0
   let current = 0
   for (const pick of picks) {
     if (pick.price_at_buy == null || pick.current_price == null) continue
-    invested += pick.dollar_amount
-    current += pick.dollar_amount * (pick.current_price / pick.price_at_buy)
+    invested += pick.weight_percent
+    current += pick.weight_percent * (pick.current_price / pick.price_at_buy)
   }
   if (invested === 0) return null
-  return { invested, current, changePercent: ((current - invested) / invested) * 100 }
+  return ((current - invested) / invested) * 100
 }
 
-function TotalSinceBuyBanner({ picks }) {
-  const totals = totalSinceBuy(picks)
-  if (!totals) return null
-  const { invested, current, changePercent } = totals
+function hasPendingUpdate(candidate) {
+  if (!candidate) return false
+  return candidate.added.length > 0 || candidate.removed.length > 0 || candidate.reweighted.length > 0
+}
+
+/** Compact "3d ago"/"2h ago" - a full timestamp is too wide for a list
+ * row, unlike the detail page which has room for `toLocaleString()`. */
+function timeAgo(iso) {
+  const diffMs = Date.now() - new Date(iso).getTime()
+  const minutes = Math.round(diffMs / 60000)
+  if (minutes < 60) return `${Math.max(minutes, 0)}m ago`
+  const hours = Math.round(minutes / 60)
+  if (hours < 24) return `${hours}h ago`
+  const days = Math.round(hours / 24)
+  if (days < 30) return `${days}d ago`
+  const months = Math.round(days / 30)
+  return `${months}mo ago`
+}
+
+// Every row renders the same fixed set of grid cells, in the same order,
+// even when a cell has nothing to show (e.g. no suggestion yet) - that's
+// what keeps the columns aligned across rows instead of shifting to fit
+// each row's content (see .themes__row's grid-template-columns).
+function ThemeRow({ theme, suggestion }) {
+  const changePercent = suggestion ? sinceBuyPercent(suggestion.picks) : null
   const direction = changePercent > 0 ? 'up' : changePercent < 0 ? 'down' : 'flat'
+  const stamp = suggestion ? suggestion.promoted_at ?? suggestion.generated_at : null
+  const updateAvailable = suggestion && hasPendingUpdate(suggestion.candidate)
+
   return (
-    <div className={`themes__total-banner themes__total-banner--${direction}`}>
-      <span className="themes__total-label">Since buy</span>
-      <span className="themes__total-change">
-        {changePercent > 0 ? '+' : ''}
-        {changePercent.toFixed(2)}%
+    <Link to={`/themes/${theme.key}`} className={`card themes__row themes__row--${theme.risk_level}`}>
+      <div className="themes__row-text">
+        <h3>{theme.name}</h3>
+        <p>{theme.description}</p>
+      </div>
+      <span className={`themes__row-change themes__row-change--${direction}`}>
+        {changePercent != null ? `${changePercent > 0 ? '+' : ''}${changePercent.toFixed(2)}%` : '—'}
       </span>
-      <span className="themes__total-detail">
-        ${invested.toFixed(2)} → ${current.toFixed(2)}
+      <span className="themes__row-updated">{stamp ? `Updated ${timeAgo(stamp)}` : suggestion === null ? 'Not ready yet' : ''}</span>
+      <span className={`themes__row-update-badge${updateAvailable ? '' : ' themes__row-update-badge--hidden'}`}>
+        Update available
       </span>
-    </div>
-  )
-}
-
-function FilingsRelevance({ relevance }) {
-  if (!relevance) return null
-  return (
-    <p className="themes__filings-relevance" title={relevance.rationale}>
-      <span className="themes__filings-relevance-label">
-        Why it's in this theme ({Math.round(relevance.relevance_score * 100)}% relevance):
-      </span>{' '}
-      {relevance.rationale}
-    </p>
-  )
-}
-
-/** weight_percent/price_at_buy never change with the amount typed in - only
- * dollar_amount/shares scale, so this is a pure client-side derivation, not
- * a fetch, every time `amount` changes. */
-function applyAmount(picks, amount) {
-  return picks.map((pick) => {
-    const dollar_amount = amount * (pick.weight_percent / 100)
-    const priceForShares = pick.current_price ?? pick.price_at_buy
-    return { ...pick, dollar_amount, shares: priceForShares ? dollar_amount / priceForShares : 0 }
-  })
-}
-
-function ThemeMeta({ suggestion }) {
-  const stamp = suggestion.promoted_at ?? suggestion.generated_at
-  return (
-    <div className="themes__meta">
-      <p className="themes__summary">{suggestion.summary}</p>
-      <p className="themes__generated-label">
-        Live since {new Date(stamp).toLocaleString()}
-        {suggestion.candidate && ' · a newer version is pending above'}
-      </p>
-    </div>
-  )
-}
-
-function AllocationTable({ suggestion, amount, filingsRelevance }) {
-  const picks = applyAmount(suggestion.picks, amount)
-  // Relative to the largest pick in *this* basket, not a literal 0-100%
-  // scale - every theme is capped at _MAX_WEIGHT_PERCENT=35 server-side
-  // (agents/theme_builder.py), so a flat 0-100% scale renders every bar
-  // as a near-invisible sliver.
-  const maxWeight = Math.max(...picks.map((p) => p.weight_percent))
-  return (
-    <>
-      <ThemeMeta suggestion={suggestion} />
-      <TotalSinceBuyBanner picks={picks} />
-      <div className="card scan__table-card">
-        <table className="scan__table themes__table">
-          <thead>
-            <tr>
-              <th>Ticker</th>
-              <th>Weight</th>
-              <th>Since buy</th>
-              <th>Amount</th>
-            </tr>
-          </thead>
-          <tbody>
-            {picks.map((pick) => (
-              <tr key={pick.ticker}>
-                <td>
-                  <div className="themes__ticker-cell">
-                    <span className="themes__ticker">{pick.ticker}</span>
-                    <span className="themes__rationale">{pick.rationale}</span>
-                    <FilingsRelevance relevance={filingsRelevance?.[pick.ticker]} />
-                  </div>
-                </td>
-                <td className="num">
-                  <div className="themes__weight-cell">
-                    <span className="themes__weight-bar">
-                      <span
-                        className="themes__weight-bar-fill"
-                        style={{ width: `${(pick.weight_percent / maxWeight) * 100}%` }}
-                      />
-                    </span>
-                    {pick.weight_percent.toFixed(1)}%
-                  </div>
-                </td>
-                <td className="num">
-                  <PriceChangeCell pick={pick} />
-                </td>
-                <td className="num">
-                  <div className="themes__amount-cell">
-                    <span>${pick.dollar_amount.toFixed(2)}</span>
-                    <span className="themes__shares">{pick.shares.toFixed(4)} sh</span>
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      <p className="themes__disclaimer">
-        Share counts are illustrative and fractional - whether you can actually buy fractional shares depends on
-        your broker. This isn't investment advice.
-      </p>
-    </>
-  )
-}
-
-function CandidateBanner({ candidate, onUpdate, updating }) {
-  if (!candidate) return null
-  const { added, removed, reweighted, quality_delta } = candidate
-  const hasChanges = added.length || removed.length || reweighted.length
-  if (!hasChanges) return null
-  return (
-    <div className="card themes__candidate-banner">
-      <div className="themes__candidate-header">
-        <strong>An updated version of this theme is available</strong>
-        <button type="button" className="scan__run" onClick={onUpdate} disabled={updating}>
-          {updating ? 'Updating…' : 'Update theme'}
-        </button>
-      </div>
-      <p className="themes__generated-label">Generated {new Date(candidate.generated_at).toLocaleString()}</p>
-      <p className="themes__summary">{candidate.summary}</p>
-      {quality_delta != null && (
-        <p className="themes__candidate-quality">
-          Selection quality {quality_delta > 0 ? 'improved' : 'changed'} by {quality_delta > 0 ? '+' : ''}
-          {(quality_delta * 100).toFixed(1)} points (a proxy for how central the theme is to each pick's business,
-          not a performance guarantee).
-        </p>
-      )}
-      <div className="themes__candidate-diff">
-        {added.length > 0 && (
-          <div className="themes__candidate-diff-group">
-            <span className="themes__candidate-diff-group-label">Adding</span>
-            <ul className="themes__candidate-diff-chips">
-              {added.map((ticker) => (
-                <li key={`add-${ticker}`} className="themes__candidate-diff-add">
-                  {ticker}
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-        {removed.length > 0 && (
-          <div className="themes__candidate-diff-group">
-            <span className="themes__candidate-diff-group-label">Dropping</span>
-            <ul className="themes__candidate-diff-chips">
-              {removed.map((ticker) => (
-                <li key={`rm-${ticker}`} className="themes__candidate-diff-remove">
-                  {ticker}
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-        {reweighted.length > 0 && (
-          <div className="themes__candidate-diff-group">
-            <span className="themes__candidate-diff-group-label">Reweighting</span>
-            <ul className="themes__candidate-diff-chips">
-              {reweighted.map((r) => (
-                <li key={`rw-${r.ticker}`} className="themes__candidate-diff-reweight">
-                  {r.ticker} {r.from.toFixed(1)}%→{r.to.toFixed(1)}%
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-      </div>
-    </div>
+      <RiskBadge level={theme.risk_level} />
+    </Link>
   )
 }
 
 export default function Themes() {
   const [themes, setThemes] = useState([])
-  const [selectedKey, setSelectedKey] = useState(null)
-  const [amount, setAmount] = useState('5000')
-  const [suggestion, setSuggestion] = useState(null)
-  const [performance, setPerformance] = useState(null)
-  const [performanceLoading, setPerformanceLoading] = useState(false)
-  const [filingsRelevance, setFilingsRelevance] = useState(null)
-  const [notReady, setNotReady] = useState(false)
-  const [error, setError] = useState(null)
-  const [updating, setUpdating] = useState(false)
+  const [suggestions, setSuggestions] = useState({})
 
   useEffect(() => {
-    getJSON('/themes').then(setThemes).catch(() => {})
+    getJSON('/themes').then((loaded) => {
+      setThemes(loaded)
+      for (const theme of loaded) {
+        getJSON(`/themes/${theme.key}/suggestion`)
+          .then((suggestion) => setSuggestions((prev) => ({ ...prev, [theme.key]: suggestion })))
+          .catch(() => setSuggestions((prev) => ({ ...prev, [theme.key]: null })))
+      }
+    })
   }, [])
-
-  function loadPerformance(key) {
-    setPerformanceLoading(true)
-    getJSON(`/themes/${key}/performance`)
-      .then(setPerformance)
-      .catch(() => setPerformance(null))
-      .finally(() => setPerformanceLoading(false))
-  }
-
-  function selectTheme(key) {
-    setSelectedKey(key)
-    setSuggestion(null)
-    setPerformance(null)
-    setNotReady(false)
-    setError(null)
-    getJSON(`/themes/${key}/suggestion`)
-      .then(setSuggestion)
-      .catch((e) => (e.status === 404 ? setNotReady(true) : setError(e.message)))
-    getJSON(`/themes/${key}/filings-relevance`).then(setFilingsRelevance).catch(() => setFilingsRelevance(null))
-    loadPerformance(key)
-  }
-
-  function updateTheme() {
-    if (!selectedKey) return
-    setUpdating(true)
-    postJSON(`/themes/${selectedKey}/suggestion/promote`)
-      .then(() => getJSON(`/themes/${selectedKey}/suggestion`))
-      .then(setSuggestion)
-      .then(() => loadPerformance(selectedKey))
-      .catch((e) => setError(e.message))
-      .finally(() => setUpdating(false))
-  }
-
-  const selectedTheme = themes.find((t) => t.key === selectedKey)
-  const parsedAmount = Number(amount) || 0
 
   return (
     <div className="scan themes">
@@ -306,58 +97,16 @@ export default function Themes() {
           <h2>Themes</h2>
           <p className="scan__subtitle">
             Pick a theme to see its suggested allocation - the same ranked basket every visitor sees, refreshed on a
-            schedule rather than rebuilt per visit. Type an amount to see it sized in dollars.
+            schedule rather than rebuilt per visit.
           </p>
         </div>
       </div>
 
-      {error && <div className="error-banner">{error}</div>}
-
-      <section className="themes__grid">
+      <section className="themes__list">
         {themes.map((theme) => (
-          <ThemeCard key={theme.key} theme={theme} selected={theme.key === selectedKey} onSelect={selectTheme} />
+          <ThemeRow key={theme.key} theme={theme} suggestion={suggestions[theme.key]} />
         ))}
       </section>
-
-      {selectedTheme && (
-        <div className="card themes__build">
-          <div className="themes__build-row">
-            <label className="themes__amount-label">
-              Amount to invest
-              <span className="themes__amount-input">
-                <span aria-hidden="true">$</span>
-                <input
-                  type="number"
-                  min="1"
-                  step="100"
-                  value={amount}
-                  onChange={(e) => setAmount(e.target.value)}
-                />
-              </span>
-            </label>
-          </div>
-
-          {notReady && (
-            <p className="scan__empty">
-              A suggested allocation for {selectedTheme.name} hasn't been generated yet - check back soon.
-            </p>
-          )}
-
-          {suggestion && (
-            <>
-              <CandidateBanner candidate={suggestion.candidate} onUpdate={updateTheme} updating={updating} />
-              <div className="card">
-                <ThemePerformanceChart
-                  points={performance?.points}
-                  updates={performance?.updates}
-                  loading={performanceLoading}
-                />
-              </div>
-              <AllocationTable suggestion={suggestion} amount={parsedAmount} filingsRelevance={filingsRelevance} />
-            </>
-          )}
-        </div>
-      )}
     </div>
   )
 }

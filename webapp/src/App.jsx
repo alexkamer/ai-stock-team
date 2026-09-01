@@ -17,6 +17,7 @@ import Login from './pages/Login'
 import Signup from './pages/Signup'
 import Brokerage from './pages/Brokerage'
 import Themes from './pages/Themes'
+import ThemeDetail from './pages/ThemeDetail'
 import TrackRecord from './pages/TrackRecord'
 import RequireAuth from './components/RequireAuth'
 import { AuthProvider } from './context/AuthContext'
@@ -47,6 +48,14 @@ export default function App() {
                 element={
                   <RequireAuth>
                     <Themes />
+                  </RequireAuth>
+                }
+              />
+              <Route
+                path="/themes/:themeKey"
+                element={
+                  <RequireAuth>
+                    <ThemeDetail />
                   </RequireAuth>
                 }
               />
