@@ -229,14 +229,24 @@ not estimated (~$0.10–0.25 per theme per run, depending on how many
 candidates clear the market-cap floor). Every ticker is filtered to one
 with a live, fetchable price before it's included.
 
-Refreshing a theme (`uv run python -m agents.theme_builder <theme_key>`)
-never overwrites what's live — it writes a pending *candidate* instead,
-and the Themes tab surfaces it as an "updated version available" banner
-with an explicit diff (tickers added/dropped, weight changes) plus a
-selection-quality delta, letting you click "Update theme" to promote it.
-Promoting re-stamps each ticker's buy price at that moment, so a theme's
-shared "since buy" return always tracks from when a version actually went
-live, not from whenever the ranking job happened to run.
+Refreshing a theme (`uv run python -m agents.refresh_themes`, all themes
+in one pass) never overwrites what's live — it writes a pending
+*candidate* instead, and the Themes tab surfaces it as an "updated
+version available" banner with an explicit diff (tickers added/dropped,
+weight changes) plus a selection-quality delta, letting you click
+"Update theme" to promote it. Promoting re-stamps each ticker's buy price
+at that moment, so a theme's shared "since buy" return always tracks
+from when a version actually went live, not from whenever the ranking
+job happened to run.
+
+**Refresh cadence** (not yet wired to a scheduler - run manually or via
+your own cron/launchd for now): plain `agents.refresh_themes` (pure
+market-data ranking, no LLM call) is cheap enough to run **weekly** — any
+more often and momentum-driven reweights barely move. Adding `--filings`
+(also re-scores filings-sourced themes' universe via the LLM, roughly
+$0.10–0.25/theme) should only run **monthly**, since 10-Ks file at most
+quarterly and re-scoring the same filings more often just burns money for
+no new signal.
 
 **Research Chat (`/chat`)** — open-ended Q&A about any stock, backed by a
 tool-using agent (price, market cap, P/E, day change, history, news,
