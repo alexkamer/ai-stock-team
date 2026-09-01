@@ -365,14 +365,16 @@ async def get_team_scan(user: User = Depends(get_current_user)) -> StreamingResp
     return StreamingResponse(event_source(), media_type="text/event-stream")
 
 
-_THEME_PUBLIC_FIELDS = {"key", "name", "description", "risk_level"}
+_THEME_PUBLIC_FIELDS = {"key", "name", "description", "risk_level", "source", "industry"}
 
 
 @app.get("/themes")
 def list_themes() -> list[dict]:
     """The fixed theme catalog (see core/themes.py) - static data, no auth
-    needed, same as /watchlist. Excludes source/industry/tickers, which are
-    internal to how get_theme_universe resolves a theme's actual tickers."""
+    needed, same as /watchlist. Excludes keywords/tickers, which are
+    internal to how get_theme_universe resolves a theme's actual tickers -
+    source/industry are exposed so the Themes tab can explain *how* a
+    theme's universe gets built, not just show the static description."""
     return [{k: v for k, v in theme.items() if k in _THEME_PUBLIC_FIELDS} for theme in THEME_CATALOG]
 
 

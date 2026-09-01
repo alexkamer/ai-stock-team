@@ -137,6 +137,30 @@
   gap: 16px;
 }
 
+.themes__about {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.themes__about h4 {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.themes__about p {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-primary);
+  line-height: 1.5;
+}
+
+.themes__about p.themes__disclaimer {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
 .themes__build-row {
   display: flex;
   align-items: flex-end;
