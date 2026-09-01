@@ -139,7 +139,7 @@ function ThemeMeta({ suggestion }) {
   )
 }
 
-function AllocationTable({ suggestion, amount, filingsRelevance }) {
+function AllocationTable({ suggestion, amount, filingsRelevance, themeName }) {
   const picks = applyAmount(suggestion.picks, amount)
   // Relative to the largest pick in *this* basket, not a literal 0-100%
   // scale - every theme is capped at _MAX_WEIGHT_PERCENT=35 server-side
@@ -151,6 +151,9 @@ function AllocationTable({ suggestion, amount, filingsRelevance }) {
       <ThemeMeta suggestion={suggestion} />
       <TotalSinceBuyBanner picks={picks} />
       <div className="card scan__table-card">
+        <h4 className="themes__table-header">
+          Stocks in {themeName} ({picks.length})
+        </h4>
         <table className="scan__table themes__table">
           <thead>
             <tr>
@@ -370,7 +373,12 @@ export default function ThemeDetail() {
         {suggestion && (
           <>
             <CandidateBanner candidate={suggestion.candidate} onUpdate={updateTheme} updating={updating} />
-            <AllocationTable suggestion={suggestion} amount={parsedAmount} filingsRelevance={filingsRelevance} />
+            <AllocationTable
+              suggestion={suggestion}
+              amount={parsedAmount}
+              filingsRelevance={filingsRelevance}
+              themeName={theme?.name ?? themeKey}
+            />
           </>
         )}
       </div>
