@@ -23,6 +23,7 @@ versioning.
 import argparse
 import math
 from datetime import date, datetime, timezone
+from time import monotonic
 
 import pandas as pd
 import yfinance as yf
@@ -31,9 +32,10 @@ from sqlalchemy.orm import Session as DbSession
 from core.config import load_agent
 from core.models import ThemeAllocation
 from core.models_db import ThemePortfolio, ThemePortfolioPick, ThemeSuggestion, ThemeSuggestionPick, _now
-from core.themes import get_filings_relevance, get_theme, get_theme_universe
+from core.themes import THEME_CATALOG, get_filings_relevance, get_theme, get_theme_universe
 from core.tools import (
     get_annualized_volatility,
+    get_day_change,
     get_eps,
     get_market_cap,
     get_price_performance,
@@ -269,7 +271,7 @@ def _fetch_current_prices(tickers: list[str]) -> dict[str, float | None]:
     def _fetch(ticker: str) -> tuple[str, float | None]:
         try:
             return ticker, get_stock_price(ticker)
-        except ValueError:
+        except Exception:
             return ticker, None
 
     return dict(parallel_map(_fetch, tickers))
@@ -286,7 +288,7 @@ def _fetch_sectors(tickers: list[str]) -> dict[str, str]:
     def _fetch(ticker: str) -> tuple[str, str]:
         try:
             return ticker, get_sector(ticker)
-        except ValueError:
+        except Exception:
             return ticker, "Other"
 
     return dict(parallel_map(_fetch, tickers))
@@ -462,7 +464,7 @@ def _fetch_eps(tickers: list[str]) -> dict[str, float | None]:
     def _fetch(ticker: str) -> tuple[str, float | None]:
         try:
             return ticker, get_eps(ticker)
-        except ValueError:
+        except Exception:
             return ticker, None
 
     return dict(parallel_map(_fetch, tickers))
@@ -475,7 +477,7 @@ def _fetch_volatility(tickers: list[str]) -> dict[str, float | None]:
     def _fetch(ticker: str) -> tuple[str, float | None]:
         try:
             return ticker, get_annualized_volatility(ticker)
-        except ValueError:
+        except Exception:
             return ticker, None
 
     return dict(parallel_map(_fetch, tickers))
@@ -633,9 +635,13 @@ def _closes_from(ticker: str, start: date) -> pd.Series | None:
     yfinance's intraday tz varies by exchange, and every version's tickers
     need to align on the same plain-date index to sum across them). None
     if yfinance has nothing for this ticker/range, same as track_record.py's
-    _closes_since - a ticker with no data just drops out of that day's
-    weighted sum rather than raising."""
-    history = yf.Ticker(ticker).history(start=start)
+    _closes_since - a ticker with no data (or a transient fetch failure,
+    e.g. a rate limit) just drops out of that day's weighted sum rather
+    than raising and taking down the whole computation."""
+    try:
+        history = yf.Ticker(ticker).history(start=start)
+    except Exception:
+        return None
     if history.empty:
         return None
     closes = history["Close"]
@@ -650,7 +656,10 @@ def _intraday_closes_from(ticker: str) -> pd.Series | None:
     promoted too recently to have even two daily closes yet - without
     this, a theme that's an hour old has exactly one daily data point and
     the chart has nothing to draw a line between."""
-    history = yf.Ticker(ticker).history(period="1d", interval="5m")
+    try:
+        history = yf.Ticker(ticker).history(period="1d", interval="5m")
+    except Exception:
+        return None
     if history.empty:
         return None
     closes = history["Close"]
@@ -792,6 +801,162 @@ def get_theme_performance(theme_key: str, db: DbSession) -> dict:
         point["benchmark"] = benchmark_value
 
     return {"theme_key": theme_key, "points": points, "updates": updates}
+
+
+def _fetch_day_changes(tickers: list[str]) -> dict[str, float | None]:
+    if not tickers:
+        return {}
+
+    def _fetch(ticker: str) -> tuple[str, float | None]:
+        try:
+            return ticker, get_day_change(ticker)["percent"]
+        except Exception:
+            return ticker, None
+
+    return dict(parallel_map(_fetch, tickers))
+
+
+def _fetch_price_performance(tickers: list[str]) -> dict[str, dict | None]:
+    if not tickers:
+        return {}
+
+    def _fetch(ticker: str) -> tuple[str, dict | None]:
+        try:
+            return ticker, get_price_performance(ticker)
+        except Exception:
+            return ticker, None
+
+    return dict(parallel_map(_fetch, tickers))
+
+
+def _weighted_average(picks: list[dict], value_by_ticker: dict[str, float | None]) -> float | None:
+    """Weight-averaged value across picks, renormalized over just the
+    picks with data - same "don't let a missing ticker drag the average
+    toward zero" convention as _weighted_risk_metrics."""
+    total = 0.0
+    weight_total = 0.0
+    for p in picks:
+        value = value_by_ticker.get(p["ticker"])
+        if value is None:
+            continue
+        weight = p["weight_percent"] / 100
+        total += weight * value
+        weight_total += weight
+    return round(total / weight_total, 2) if weight_total else None
+
+
+_SUMMARY_CACHE_TTL_SECONDS = 900  # 15 minutes - each theme's summary re-fetches a year of price history plus EPS/day-change for every ticker, so redoing that for all themes on every /themes page visit isn't worth it (same TTL-cache convention as core/themes.py's _universe_cache)
+_summary_cache: tuple[float, list[dict]] | None = None
+
+
+def _theme_summary_row(
+    theme_key: str,
+    live: ThemeSuggestion,
+    db: DbSession,
+    current_prices: dict[str, float | None],
+    day_changes: dict[str, float | None],
+    one_month_by_ticker: dict[str, float | None],
+    one_year_by_ticker: dict[str, float | None],
+    eps_by_ticker: dict[str, float | None],
+    vol_by_ticker: dict[str, float | None],
+    benchmark_metrics: dict,
+) -> dict:
+    tickers = sorted({p.ticker for p in live.picks})
+    weight_by_ticker = {p.ticker: p.weight_percent for p in live.picks}
+    top_tickers = [p.ticker for p in sorted(live.picks, key=lambda p: p.weight_percent, reverse=True)]
+
+    picks_for_metrics = [
+        {"ticker": t, "weight_percent": weight_by_ticker[t], "current_price": current_prices.get(t), "price_at_buy": None}
+        for t in tickers
+    ]
+    risk_metrics = _weighted_risk_metrics(picks_for_metrics, eps_by_ticker, vol_by_ticker)
+
+    performance_history = get_theme_performance(theme_key, db)
+    since_inception = (
+        round(performance_history["points"][-1]["value"] - 100, 2) if performance_history["points"] else None
+    )
+    inception_date = performance_history["points"][0]["date"].split("T")[0] if performance_history["points"] else None
+
+    return {
+        "key": theme_key,
+        "stock_count": len(tickers),
+        "preview_tickers": top_tickers[:5],
+        "inception_date": inception_date,
+        "day_change_percent": _weighted_average(picks_for_metrics, day_changes),
+        "one_month_return_percent": _weighted_average(picks_for_metrics, one_month_by_ticker),
+        "one_year_return_percent": _weighted_average(picks_for_metrics, one_year_by_ticker),
+        "since_inception_percent": since_inception,
+        "volatility_label": _risk_label(risk_metrics["volatility"], benchmark_metrics["volatility"]),
+        "valuation_label": _risk_label(risk_metrics["valuation"], benchmark_metrics["valuation"]),
+    }
+
+
+def _empty_summary_row(theme_key: str) -> dict:
+    return {
+        "key": theme_key,
+        "stock_count": 0,
+        "preview_tickers": [],
+        "inception_date": None,
+        "day_change_percent": None,
+        "one_month_return_percent": None,
+        "one_year_return_percent": None,
+        "since_inception_percent": None,
+        "volatility_label": None,
+        "valuation_label": None,
+    }
+
+
+def get_theme_summaries(db: DbSession) -> list[dict]:
+    """One row per theme for the /themes list page - stock count + a
+    top-5 ticker preview, day/1-month/1-year/since-inception returns, and
+    Low/Moderate/High volatility & valuation - the Schwab-style thematic
+    table. Every per-ticker fetch (price, day change, 1mo/1yr return,
+    EPS, volatility) runs once for the *union* of tickers across every
+    theme rather than once per theme - a lot of tickers repeat across
+    baskets (MSFT, NVDA, AMZN...), and at 24 themes this is already
+    enough total volume to trip yfinance's rate limiter without that
+    dedup. Cached whole for _SUMMARY_CACHE_TTL_SECONDS on top of that,
+    since it's real market data across the entire catalog, not a stored
+    snapshot."""
+    global _summary_cache
+    if _summary_cache is not None and monotonic() - _summary_cache[0] < _SUMMARY_CACHE_TTL_SECONDS:
+        return _summary_cache[1]
+
+    live_by_key = {theme["key"]: _get_suggestion(db, theme["key"], "live") for theme in THEME_CATALOG}
+    all_tickers = sorted({p.ticker for live in live_by_key.values() if live is not None for p in live.picks})
+
+    current_prices = _fetch_current_prices(all_tickers)
+    day_changes = _fetch_day_changes(all_tickers)
+    performance = _fetch_price_performance(all_tickers)
+    eps_by_ticker = _fetch_eps(all_tickers)
+    vol_by_ticker = _fetch_volatility(all_tickers)
+    benchmark_metrics = _benchmark_risk_metrics()
+
+    one_month_by_ticker = {t: (performance[t]["1_month"] if performance.get(t) else None) for t in all_tickers}
+    one_year_by_ticker = {t: (performance[t]["1_year"] if performance.get(t) else None) for t in all_tickers}
+
+    rows = []
+    for theme in THEME_CATALOG:
+        live = live_by_key[theme["key"]]
+        rows.append(
+            _empty_summary_row(theme["key"])
+            if live is None
+            else _theme_summary_row(
+                theme["key"],
+                live,
+                db,
+                current_prices,
+                day_changes,
+                one_month_by_ticker,
+                one_year_by_ticker,
+                eps_by_ticker,
+                vol_by_ticker,
+                benchmark_metrics,
+            )
+        )
+
+    _summary_cache = (monotonic(), rows)
+    return rows
 
 
 def _main() -> None:

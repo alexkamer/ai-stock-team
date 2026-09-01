@@ -27,7 +27,7 @@ from sqlalchemy.orm import Session as DbSession
 from agents.chat import send_message
 from agents.main import get_article_summary, get_sentiment_streaming
 from agents.stock_team import get_team_analysis, run_team_scan
-from agents.theme_builder import get_theme_performance, get_theme_suggestion, promote_theme_suggestion
+from agents.theme_builder import get_theme_performance, get_theme_suggestion, get_theme_summaries, promote_theme_suggestion
 from core.auth import get_current_user
 from core.db import get_db
 from core.models_db import TeamVerdictRecord, User
@@ -376,6 +376,16 @@ def list_themes() -> list[dict]:
     source/industry are exposed so the Themes tab can explain *how* a
     theme's universe gets built, not just show the static description."""
     return [{k: v for k, v in theme.items() if k in _THEME_PUBLIC_FIELDS} for theme in THEME_CATALOG]
+
+
+@app.get("/themes/summary")
+def get_theme_summaries_route(db: DbSession = Depends(get_db)) -> list[dict]:
+    """One row per theme for the /themes list page - stock count/preview,
+    day/1-month/1-year/since-inception returns, and Low/Moderate/High
+    volatility & valuation (see agents/theme_builder.py's
+    get_theme_summaries). No auth needed, same as /themes - it's public
+    market data about the catalog, not anything user-specific."""
+    return get_theme_summaries(db)
 
 
 @app.get("/themes/{theme_key}/filings-relevance")

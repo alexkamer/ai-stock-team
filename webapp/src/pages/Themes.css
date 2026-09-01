@@ -1,102 +1,82 @@
-.themes__list {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
+.themes__summary-table-card {
+  overflow-x: auto;
 }
 
-.themes__row {
-  display: grid;
-  grid-template-columns: 1fr 70px 100px 130px 110px;
-  align-items: center;
-  gap: 16px;
-  text-align: left;
-  font-family: inherit;
-  text-decoration: none;
-  color: inherit;
+.themes__summary-table {
+  min-width: 860px;
+}
+
+.themes__summary-table th:not(:first-child) {
+  text-align: right;
+}
+
+.themes__summary-row {
   cursor: pointer;
-  border-left: 3px solid transparent;
-  transition: border-color 0.15s ease, background 0.15s ease;
 }
 
-.themes__row:hover {
+.themes__summary-row:hover {
   background: var(--surface-2);
 }
 
-.themes__row--lower {
-  border-left-color: var(--good);
-}
-
-.themes__row--moderate {
-  border-left-color: var(--signal);
-}
-
-.themes__row--higher {
-  border-left-color: var(--critical);
-}
-
-.themes__row-text {
+.themes__summary-name-cell {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  min-width: 0;
+  gap: 2px;
+  min-width: 220px;
 }
 
-.themes__row-text h3 {
-  margin: 0;
-  font-size: 15px;
+.themes__summary-name {
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--text-primary);
 }
 
-.themes__row-text p {
-  margin: 0;
-  color: var(--text-secondary);
-  font-size: 13px;
+.themes__summary-tickers {
+  color: var(--text-muted);
+  font-size: 12px;
+  font-family: var(--mono);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  max-width: 340px;
 }
 
-.themes__row-change {
+.themes__summary-percent {
   font-family: var(--mono);
   font-weight: 600;
-  font-size: 14px;
-  text-align: right;
+  font-size: 13px;
   white-space: nowrap;
 }
 
-.themes__row-change--up {
+.themes__summary-percent--up {
   color: var(--good);
 }
 
-.themes__row-change--down {
+.themes__summary-percent--down {
   color: var(--critical);
 }
 
-.themes__row-change--flat {
+.themes__summary-percent--flat {
   color: var(--text-muted);
 }
 
-.themes__row-updated {
+.themes__summary-cell-muted {
+  color: var(--text-muted);
+  font-family: var(--mono);
+}
+
+.themes__summary-inception-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+}
+
+.themes__summary-inception-date {
   color: var(--text-muted);
   font-size: 11px;
   font-family: var(--mono);
   white-space: nowrap;
-}
-
-.themes__row-update-badge {
-  justify-self: start;
-  font-size: 11px;
-  font-family: var(--mono);
-  text-transform: uppercase;
-  letter-spacing: 0.02em;
-  color: var(--signal);
-  border: 1px solid var(--signal);
-  border-radius: 3px;
-  padding: 2px 6px;
-  white-space: nowrap;
-}
-
-.themes__row-update-badge--hidden {
-  visibility: hidden;
 }
 
 .themes__risk-metrics {

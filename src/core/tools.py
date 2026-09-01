@@ -354,13 +354,14 @@ def get_price_history(ticker: str, period: str = "1mo") -> dict:
     }
 
 
-_PRICE_PERFORMANCE_WINDOWS = ["1_week", "3_month", "ytd", "1_year"]
+_PRICE_PERFORMANCE_WINDOWS = ["1_week", "1_month", "3_month", "ytd", "1_year"]
 
 
 def get_price_performance(ticker: str) -> dict:
     """Look up percent price change over several trailing windows (1 week,
-    3 months, year-to-date, 1 year) for a stock ticker, for the stock
-    comparison page's price performance table.
+    1 month, 3 months, year-to-date, 1 year) for a stock ticker, for the
+    stock comparison page's price performance table (and the Themes list
+    page's 1-month/1-year return columns).
 
     Args:
         ticker: Stock ticker symbol, e.g. 'NVDA'.
@@ -380,6 +381,7 @@ def get_price_performance(ticker: str) -> dict:
     # and can flip the sign of the change entirely.
     window_starts = {
         "1_week": latest_date - relativedelta(weeks=1),
+        "1_month": latest_date - relativedelta(months=1),
         "3_month": latest_date - relativedelta(months=3),
         "ytd": latest_date.replace(month=1, day=1),
         "1_year": latest_date - relativedelta(years=1),
