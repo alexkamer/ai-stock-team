@@ -37,7 +37,8 @@ THEME_CATALOG = [
         ],
         "tickers": [
             "NVDA", "MSFT", "GOOGL", "META", "AMZN", "AMD", "AVGO", "PLTR",
-            "SNOW", "CRM", "ORCL", "SMCI", "ANET", "NOW",
+            "SNOW", "CRM", "ORCL", "SMCI", "ANET", "NOW", "TSM", "ARM",
+            "MU", "ADBE", "CRWD", "DDOG", "MRVL", "QCOM",
         ],
     },
     {
@@ -48,7 +49,8 @@ THEME_CATALOG = [
         "source": "seed",
         "tickers": [
             "TSLA", "ENPH", "FSLR", "SEDG", "RUN", "PLUG", "NEE", "RIVN",
-            "LCID", "ALB", "BE", "CHPT",
+            "LCID", "ALB", "BE", "CHPT", "SHLS", "ARRY", "CSIQ", "AES",
+            "BEP", "STEM", "NXT",
         ],
     },
     {
@@ -75,6 +77,7 @@ THEME_CATALOG = [
         "source": "seed",
         "tickers": [
             "LLY", "NVO", "UNH", "ISRG", "VRTX", "REGN", "DXCM", "ABBV", "MRNA", "PODD",
+            "JNJ", "PFE", "TMO", "MDT", "SYK", "BSX", "AMGN", "GILD",
         ],
     },
     {
@@ -92,7 +95,8 @@ THEME_CATALOG = [
         "risk_level": "moderate",
         "source": "seed",
         "tickers": [
-            "V", "MA", "PYPL", "SQ", "COIN", "SOFI", "AXP", "ADYEY", "FI", "GPN",
+            "V", "MA", "PYPL", "XYZ", "COIN", "SOFI", "AXP", "ADYEY", "FISV", "GPN",
+            "HOOD", "AFRM", "UPST", "WEX", "FIS", "PAYX",
         ],
     },
     {
@@ -103,13 +107,189 @@ THEME_CATALOG = [
         "source": "seed",
         "tickers": [
             "AMZN", "SHOP", "MELI", "ETSY", "CHWY", "ABNB", "BKNG", "SBUX", "NKE", "CMG",
+            "WMT", "TGT", "LULU", "ULTA", "YUM", "TJX",
+        ],
+    },
+    {
+        "key": "defense-aerospace",
+        "name": "Defense & Aerospace",
+        "description": "Defense primes and aerospace suppliers building the hardware behind military and government spending.",
+        "risk_level": "moderate",
+        "source": "seed",
+        "tickers": [
+            "LMT", "RTX", "NOC", "GD", "LHX", "HII", "TXT", "AVAV", "KTOS", "BA",
+            "LDOS", "SAIC", "HEI", "TDG", "CW", "AXON",
+        ],
+    },
+    {
+        "key": "robotics-automation",
+        "name": "Robotics & Automation",
+        "description": "Industrial robotics, automation, and machine-vision companies reshaping factories and warehouses.",
+        "risk_level": "higher",
+        "source": "seed",
+        "tickers": [
+            "ROK", "FANUY", "TER", "ZBRA", "PATH", "CGNX", "EMR", "HON",
+            "ROP", "DOV", "AME", "SYM", "KEYS",
+        ],
+    },
+    {
+        "key": "media-entertainment",
+        "name": "Media & Entertainment",
+        "description": "Streaming platforms, studios, and live-event companies competing for attention and subscriptions.",
+        "risk_level": "moderate",
+        "source": "seed",
+        "tickers": [
+            "NFLX", "DIS", "WBD", "PARA", "SPOT", "ROKU", "LYV", "TTWO", "EA",
+            "CMCSA", "FOXA", "WMG", "MTCH", "PINS", "SNAP",
+        ],
+    },
+    {
+        "key": "banks-financial-services",
+        "name": "Banks & Financial Services",
+        "description": "Large money-center and regional banks along with brokerages anchoring the US financial system.",
+        "risk_level": "moderate",
+        "source": "seed",
+        "tickers": [
+            "JPM", "BAC", "WFC", "GS", "MS", "SCHW", "C", "USB",
+            "PNC", "TFC", "COF", "MTB", "STT", "ALLY",
+        ],
+    },
+    {
+        "key": "homebuilders-real-estate",
+        "name": "Homebuilders & Real Estate",
+        "description": "Homebuilders, developers, and REITs tied to housing supply and commercial property.",
+        "risk_level": "moderate",
+        "source": "seed",
+        "tickers": [
+            "DHI", "LEN", "NVR", "PHM", "SPG", "O", "AMT", "PLD",
+            "PSA", "EQIX", "DLR", "AVB", "EQR",
+        ],
+    },
+    {
+        "key": "energy-natural-resources",
+        "name": "Energy & Natural Resources",
+        "description": "Oil, gas, and pipeline companies producing and moving the fuels that still power the economy.",
+        "risk_level": "moderate",
+        "source": "seed",
+        "tickers": [
+            "XOM", "CVX", "COP", "SLB", "EOG", "OXY", "WMB", "KMI",
+            "PSX", "MPC", "VLO", "APA", "DVN", "FANG",
+        ],
+    },
+    {
+        "key": "industrial-infrastructure",
+        "name": "Industrial Infrastructure",
+        "description": "Heavy-equipment, construction, and infrastructure-spending plays behind roads, grids, and factories.",
+        "risk_level": "moderate",
+        "source": "seed",
+        "tickers": [
+            "CAT", "DE", "ETN", "PWR", "VMC", "MLM", "URI", "GNRC",
+            "ITW", "PH", "JCI", "XYL", "WAB",
+        ],
+    },
+    {
+        "key": "travel-leisure",
+        "name": "Travel & Leisure",
+        "description": "Airlines, hotels, cruise lines, and casinos riding the post-pandemic rebound in travel spending.",
+        "risk_level": "higher",
+        "source": "seed",
+        "tickers": [
+            "MAR", "RCL", "CCL", "DAL", "LVS", "EXPE", "UAL", "H",
+            "WYNN", "MGM", "LUV", "ALK", "TCOM",
+        ],
+    },
+    {
+        "key": "space-economy",
+        "name": "Space Economy",
+        "description": "Launch providers, satellite operators, and space-infrastructure companies commercializing orbit.",
+        "risk_level": "higher",
+        "source": "filings",
+        "keywords": [
+            "satellite", "launch vehicle", "space infrastructure", "orbital", "spacecraft",
+        ],
+        "tickers": [
+            "RKLB", "ASTS", "IRDM", "VSAT", "LMT", "BA", "NOC",
+            "TDY", "TRMB", "GSAT", "PL", "RDW",
+        ],
+    },
+    {
+        "key": "quantum-computing",
+        "name": "Quantum Computing",
+        "description": "Early-stage quantum hardware and software companies racing to build practical quantum computers.",
+        "risk_level": "higher",
+        "source": "filings",
+        "keywords": [
+            "quantum computing", "qubit", "quantum processor", "quantum algorithm",
+        ],
+        "tickers": [
+            "IONQ", "RGTI", "QBTS", "IBM", "GOOGL", "HON", "ARQQ",
+        ],
+    },
+    {
+        "key": "nuclear-uranium",
+        "name": "Nuclear & Uranium",
+        "description": "Power utilities, reactor developers, and uranium miners riding AI-datacenter demand for power.",
+        "risk_level": "higher",
+        "source": "seed",
+        "tickers": [
+            "CEG", "VST", "NRG", "CCJ", "SMR", "OKLO", "BWXT", "UEC", "LEU",
+        ],
+    },
+    {
+        "key": "data-center-ai-infrastructure",
+        "name": "Data Center & AI Infrastructure",
+        "description": "The power, cooling, and networking buildout behind AI datacenters, as opposed to the chips and software running inside them.",
+        "risk_level": "higher",
+        "source": "seed",
+        "tickers": [
+            "VRT", "ETN", "EQIX", "DLR", "MOD", "VST", "PWR", "NVT", "AVAV",
+        ],
+    },
+    {
+        "key": "consumer-staples-dividends",
+        "name": "Consumer Staples & Dividend Aristocrats",
+        "description": "Large, cash-generative household-brand companies that keep paying and raising dividends through downturns.",
+        "risk_level": "lower",
+        "source": "seed",
+        "tickers": [
+            "PG", "KO", "PEP", "CL", "WMT", "COST", "MDLZ", "KMB",
+        ],
+    },
+    {
+        "key": "insurance",
+        "name": "Insurance",
+        "description": "Property, casualty, and life insurers underwriting risk for consumers and businesses.",
+        "risk_level": "moderate",
+        "source": "seed",
+        "tickers": [
+            "PGR", "TRV", "ALL", "CB", "MET", "PRU", "AIG",
+        ],
+    },
+    {
+        "key": "sports-betting-gaming",
+        "name": "Sports Betting & Gaming",
+        "description": "Online sportsbooks and casino operators capitalizing on the legalization of sports betting.",
+        "risk_level": "higher",
+        "source": "seed",
+        "tickers": [
+            "DKNG", "FLUT", "MGM", "CZR", "PENN", "LVS",
+        ],
+    },
+    {
+        "key": "metals-mining",
+        "name": "Metals & Mining",
+        "description": "Miners producing the copper, gold, and industrial metals that power construction and electrification.",
+        "risk_level": "higher",
+        "source": "seed",
+        "tickers": [
+            "FCX", "NEM", "SCCO", "AA", "CLF",
         ],
     },
 ]
 
 _THEMES_BY_KEY = {theme["key"]: theme for theme in THEME_CATALOG}
 
-_UNIVERSE_LIMIT = 15
+_UNIVERSE_LIMIT = 25
 _MIN_MARKET_CAP = 2_000_000_000
 _UNIVERSE_CACHE_TTL_SECONDS = 86_400  # a day - industry composition/prices don't shift intraday enough to rescreen every request
 _universe_cache: dict[str, tuple[float, list[str]]] = {}
