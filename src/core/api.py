@@ -27,7 +27,7 @@ from sqlalchemy.orm import Session as DbSession
 from agents.chat import send_message
 from agents.main import get_article_summary, get_sentiment_streaming
 from agents.stock_team import get_team_analysis, run_team_scan
-from agents.theme_builder import get_theme_suggestion, promote_theme_suggestion
+from agents.theme_builder import get_theme_performance, get_theme_suggestion, promote_theme_suggestion
 from core.auth import get_current_user
 from core.db import get_db
 from core.models_db import TeamVerdictRecord, User
@@ -397,6 +397,16 @@ def get_theme_suggestion_route(theme_key: str, db: DbSession = Depends(get_db)) 
     if suggestion is None:
         raise HTTPException(status_code=404, detail="No suggestion generated yet for this theme")
     return suggestion
+
+
+@app.get("/themes/{theme_key}/performance")
+def get_theme_performance_route(theme_key: str, db: DbSession = Depends(get_db)) -> dict:
+    """P/L history reconstructed from real historical closes across every
+    version this theme has ever had (see agents/theme_builder.py's
+    get_theme_performance) - empty points/updates, not 404, when the
+    theme's never been promoted yet, since "no history" is a normal
+    state for a theme still on its first live version."""
+    return get_theme_performance(theme_key, db)
 
 
 @app.post("/themes/{theme_key}/suggestion/promote")

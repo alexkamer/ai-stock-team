@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { getJSON, postJSON } from '../api/client'
+import ThemePerformanceChart from '../components/ThemePerformanceChart'
 import '../components/ToolCallPill.css'
 import './StockTeam.css'
 import './Scan.css'
@@ -252,6 +253,8 @@ export default function Themes() {
   const [selectedKey, setSelectedKey] = useState(null)
   const [amount, setAmount] = useState('5000')
   const [suggestion, setSuggestion] = useState(null)
+  const [performance, setPerformance] = useState(null)
+  const [performanceLoading, setPerformanceLoading] = useState(false)
   const [filingsRelevance, setFilingsRelevance] = useState(null)
   const [notReady, setNotReady] = useState(false)
   const [error, setError] = useState(null)
@@ -261,15 +264,25 @@ export default function Themes() {
     getJSON('/themes').then(setThemes).catch(() => {})
   }, [])
 
+  function loadPerformance(key) {
+    setPerformanceLoading(true)
+    getJSON(`/themes/${key}/performance`)
+      .then(setPerformance)
+      .catch(() => setPerformance(null))
+      .finally(() => setPerformanceLoading(false))
+  }
+
   function selectTheme(key) {
     setSelectedKey(key)
     setSuggestion(null)
+    setPerformance(null)
     setNotReady(false)
     setError(null)
     getJSON(`/themes/${key}/suggestion`)
       .then(setSuggestion)
       .catch((e) => (e.status === 404 ? setNotReady(true) : setError(e.message)))
     getJSON(`/themes/${key}/filings-relevance`).then(setFilingsRelevance).catch(() => setFilingsRelevance(null))
+    loadPerformance(key)
   }
 
   function updateTheme() {
@@ -278,6 +291,7 @@ export default function Themes() {
     postJSON(`/themes/${selectedKey}/suggestion/promote`)
       .then(() => getJSON(`/themes/${selectedKey}/suggestion`))
       .then(setSuggestion)
+      .then(() => loadPerformance(selectedKey))
       .catch((e) => setError(e.message))
       .finally(() => setUpdating(false))
   }
@@ -332,6 +346,13 @@ export default function Themes() {
           {suggestion && (
             <>
               <CandidateBanner candidate={suggestion.candidate} onUpdate={updateTheme} updating={updating} />
+              <div className="card">
+                <ThemePerformanceChart
+                  points={performance?.points}
+                  updates={performance?.updates}
+                  loading={performanceLoading}
+                />
+              </div>
               <AllocationTable suggestion={suggestion} amount={parsedAmount} filingsRelevance={filingsRelevance} />
             </>
           )}

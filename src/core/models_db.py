@@ -212,14 +212,22 @@ class ThemeSuggestion(Base):
     reset - promote_theme_suggestion is the only thing that flips a
     candidate to live, and it re-stamps price_at_buy at promotion time,
     not candidate-generation time, so since-buy starts exactly when a
-    version is actually adopted."""
+    version is actually adopted.
+
+    Promoting a candidate doesn't delete the outgoing 'live' row - it's
+    archived (status='archived', retired_at set) instead, so
+    get_theme_performance can reconstruct a theme's full P/L history
+    across every version it's ever had, not just the current one. Unlike
+    'live'/'candidate' (at most one each per theme_key, enforced in code
+    via delete-then-insert, not a DB constraint - 'archived' rows
+    deliberately accumulate, so a unique constraint on (theme_key,
+    status) would be wrong here)."""
 
     __tablename__ = "theme_suggestions"
-    __table_args__ = (UniqueConstraint("theme_key", "status", name="uq_theme_suggestion_theme_status"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
     theme_key: Mapped[str] = mapped_column(String(32), index=True)
-    status: Mapped[str] = mapped_column(String(16))  # "live" or "candidate"
+    status: Mapped[str] = mapped_column(String(16))  # "live", "candidate", or "archived"
     summary: Mapped[str] = mapped_column(Text())
     quality_score: Mapped[float | None] = mapped_column(Float(), nullable=True)
     """Average relevance_score across this version's picks, for a
@@ -228,6 +236,7 @@ class ThemeSuggestion(Base):
     has no per-pick relevance score to average."""
     generated_at: Mapped[datetime] = mapped_column(DateTime(), default=_now)
     promoted_at: Mapped[datetime | None] = mapped_column(DateTime(), nullable=True)
+    retired_at: Mapped[datetime | None] = mapped_column(DateTime(), nullable=True)
 
     picks: Mapped[list["ThemeSuggestionPick"]] = relationship(
         back_populates="theme_suggestion", cascade="all, delete-orphan"

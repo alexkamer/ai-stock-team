@@ -22,8 +22,10 @@ versioning.
 
 import argparse
 import math
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 
+import pandas as pd
+import yfinance as yf
 from sqlalchemy.orm import Session as DbSession
 
 from core.config import load_agent
@@ -378,7 +380,11 @@ def promote_theme_suggestion(theme_key: str, db: DbSession) -> dict:
     today's prices (not whatever price was live when the candidate was
     generated, which could be stale by the time someone actually clicks
     "Update theme"), so since-buy tracking starts fresh from the moment
-    of adoption, not from the cron run."""
+    of adoption, not from the cron run.
+
+    The outgoing 'live' row is archived, not deleted - see
+    get_theme_performance, which stitches every archived version plus
+    the current live one into one continuous P/L history."""
     candidate = _get_suggestion(db, theme_key, "candidate")
     if candidate is None:
         raise ValueError(f"No candidate suggestion to promote for theme {theme_key!r}")
@@ -386,11 +392,12 @@ def promote_theme_suggestion(theme_key: str, db: DbSession) -> dict:
     tickers = [p.ticker for p in candidate.picks]
     fresh_prices = _fetch_current_prices(tickers)
 
+    retired_at = _now()
     for old_live in db.query(ThemeSuggestion).filter(ThemeSuggestion.theme_key == theme_key, ThemeSuggestion.status == "live"):
-        db.delete(old_live)
-    db.flush()
+        old_live.status = "archived"
+        old_live.retired_at = retired_at
     candidate.status = "live"
-    candidate.promoted_at = _now()
+    candidate.promoted_at = retired_at
     for pick in candidate.picks:
         price = fresh_prices.get(pick.ticker)
         if price is not None:
@@ -473,6 +480,92 @@ def get_theme_suggestion(theme_key: str, db: DbSession) -> dict | None:
         "picks": picks,
         "candidate": candidate_summary,
     }
+
+
+def _closes_from(ticker: str, start: date) -> pd.Series | None:
+    """Real daily closes from `start` to today, date-indexed (tz dropped -
+    yfinance's intraday tz varies by exchange, and every version's tickers
+    need to align on the same plain-date index to sum across them). None
+    if yfinance has nothing for this ticker/range, same as track_record.py's
+    _closes_since - a ticker with no data just drops out of that day's
+    weighted sum rather than raising."""
+    history = yf.Ticker(ticker).history(start=start)
+    if history.empty:
+        return None
+    closes = history["Close"]
+    closes.index = closes.index.date
+    return closes
+
+
+def _version_return_index(picks: list[ThemeSuggestionPick], start: date, end: date | None) -> pd.Series:
+    """One suggestion version's daily weighted return index: for each
+    trading day, Σ weight_percent/100 * (that day's close / price_at_buy)
+    across its picks - starts near 1.0 on day one and moves with the
+    basket's real performance from there. Forward-filled so a ticker
+    missing a specific day (a data gap, not a holiday every ticker shares)
+    doesn't zero out that day's sum."""
+    weights = {p.ticker: p.weight_percent / 100 for p in picks}
+    buy_prices = {p.ticker: p.price_at_buy for p in picks}
+
+    def _fetch(ticker: str) -> tuple[str, pd.Series | None]:
+        return ticker, _closes_from(ticker, start)
+
+    series_by_ticker = {t: s for t, s in parallel_map(_fetch, list(weights)) if s is not None}
+    if not series_by_ticker:
+        return pd.Series(dtype=float)
+
+    frame = pd.DataFrame(series_by_ticker).sort_index().ffill()
+    if end is not None:
+        frame = frame[frame.index <= end]
+    normalized = frame.divide(pd.Series(buy_prices))
+    weighted = normalized.multiply(pd.Series(weights))
+    return weighted.sum(axis=1).dropna()
+
+
+def get_theme_performance(theme_key: str, db: DbSession) -> dict:
+    """Reconstructs a theme's full profit/loss history from real
+    historical closes, not a stored snapshot - one version at a time
+    (every archived version plus the current live one, oldest first),
+    chain-linked so an "Update theme" ticker swap shows as a continuation
+    of cumulative return instead of resetting to zero, the same
+    convention a rebalanced index's return series follows. `updates`
+    marks each version's start date - the first entry is the theme's
+    original buy-in, not an "update," so a caller rendering divider lines
+    should skip index 0."""
+    versions = (
+        db.query(ThemeSuggestion)
+        .filter(
+            ThemeSuggestion.theme_key == theme_key,
+            ThemeSuggestion.status.in_(["live", "archived"]),
+            ThemeSuggestion.promoted_at.isnot(None),
+        )
+        .order_by(ThemeSuggestion.promoted_at.asc())
+        .all()
+    )
+    if not versions:
+        return {"theme_key": theme_key, "points": [], "updates": []}
+
+    points: list[dict] = []
+    updates: list[dict] = []
+    cursor_level = 100.0  # indexed to 100 at the start, like a normal total-return index, not a raw 1.0 multiplier
+    for version in versions:
+        start = version.promoted_at.date()
+        end = version.retired_at.date() if version.retired_at else None
+        series = _version_return_index(version.picks, start, end)
+        if series.empty:
+            continue
+        scaled = series / series.iloc[0] * cursor_level
+        new_points = [{"date": d.isoformat(), "value": round(float(v), 3)} for d, v in scaled.items()]
+        # A version's retired_at and the next one's promoted_at are often
+        # the same calendar day (that's the promotion moment) - drop the
+        # duplicate x-axis point rather than showing the same date twice.
+        if points and new_points and new_points[0]["date"] == points[-1]["date"]:
+            new_points = new_points[1:]
+        points.extend(new_points)
+        cursor_level = float(scaled.iloc[-1])
+        updates.append({"date": start.isoformat(), "tickers": sorted(p.ticker for p in version.picks)})
+
+    return {"theme_key": theme_key, "points": points, "updates": updates}
 
 
 def _main() -> None:
