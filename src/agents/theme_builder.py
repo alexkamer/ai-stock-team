@@ -952,22 +952,31 @@ def get_theme_summaries(db: DbSession) -> list[dict]:
     rows = []
     for theme in THEME_CATALOG:
         live = live_by_key[theme["key"]]
-        rows.append(
-            _empty_summary_row(theme["key"])
-            if live is None
-            else _theme_summary_row(
-                theme["key"],
-                live,
-                db,
-                current_prices,
-                day_changes,
-                one_month_by_ticker,
-                one_year_by_ticker,
-                eps_by_ticker,
-                vol_by_ticker,
-                benchmark_metrics,
+        if live is None:
+            rows.append(_empty_summary_row(theme["key"]))
+            continue
+        # One theme's row failing outright (as opposed to just missing a
+        # metric, which the _fetch_* helpers already degrade gracefully)
+        # shouldn't blank out the other 23 - same "isolate the failure"
+        # principle as every per-ticker fetch above, just at the per-theme
+        # level instead.
+        try:
+            rows.append(
+                _theme_summary_row(
+                    theme["key"],
+                    live,
+                    db,
+                    current_prices,
+                    day_changes,
+                    one_month_by_ticker,
+                    one_year_by_ticker,
+                    eps_by_ticker,
+                    vol_by_ticker,
+                    benchmark_metrics,
+                )
             )
-        )
+        except Exception:
+            rows.append(_empty_summary_row(theme["key"]))
 
     _summary_cache = (monotonic(), rows)
     return rows
