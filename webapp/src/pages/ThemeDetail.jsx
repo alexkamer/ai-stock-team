@@ -10,6 +10,11 @@ import './Themes.css'
 
 const RISK_LABEL = { lower: 'Lower risk', moderate: 'Moderate risk', higher: 'Higher risk' }
 
+function RiskBadge({ level }) {
+  if (!level) return null
+  return <span className={`risk-badge risk-badge--${level}`}>{RISK_LABEL[level] ?? level}</span>
+}
+
 const RISK_EXPLANATION = {
   lower: 'large, cash-generative companies that tend to move less than the rest of the catalog - but it’s still a concentrated equity basket, not a bond fund.',
   moderate: 'an established, real-revenue business tied to one theme rather than broadly diversified across sectors - steadier than a speculative bet, but not immune to a bad quarter.',
