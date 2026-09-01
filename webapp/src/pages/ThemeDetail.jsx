@@ -139,21 +139,71 @@ function ThemeMeta({ suggestion }) {
   )
 }
 
-function AllocationTable({ suggestion, amount, filingsRelevance, themeName }) {
-  const picks = applyAmount(suggestion.picks, amount)
-  // Relative to the largest pick in *this* basket, not a literal 0-100%
-  // scale - every theme is capped at _MAX_WEIGHT_PERCENT=35 server-side
-  // (agents/theme_builder.py), so a flat 0-100% scale renders every bar
-  // as a near-invisible sliver.
-  const maxWeight = Math.max(...picks.map((p) => p.weight_percent))
+// Sorted by combined weight, heaviest sector first - the same "what
+// dominates this basket" question the weight bars answer per-ticker,
+// one level up.
+function groupBySector(picks) {
+  const bySector = new Map()
+  for (const pick of picks) {
+    const sector = pick.sector || 'Other'
+    if (!bySector.has(sector)) bySector.set(sector, [])
+    bySector.get(sector).push(pick)
+  }
+  return [...bySector.entries()]
+    .map(([sector, sectorPicks]) => ({
+      sector,
+      picks: sectorPicks,
+      weight: sectorPicks.reduce((sum, p) => sum + p.weight_percent, 0),
+    }))
+    .sort((a, b) => b.weight - a.weight)
+}
+
+function PickRow({ pick, filingsRelevance, maxWeight }) {
   return (
-    <>
-      <ThemeMeta suggestion={suggestion} />
-      <TotalSinceBuyBanner picks={picks} />
-      <div className="card scan__table-card">
-        <h4 className="themes__table-header">
-          Stocks in {themeName} ({picks.length})
-        </h4>
+    <tr>
+      <td>
+        <div className="themes__ticker-cell">
+          <span className="themes__ticker">{pick.ticker}</span>
+          <span className="themes__rationale">{pick.rationale}</span>
+          <FilingsRelevance relevance={filingsRelevance?.[pick.ticker]} />
+        </div>
+      </td>
+      <td className="num">
+        <div className="themes__weight-cell">
+          <span className="themes__weight-bar">
+            <span className="themes__weight-bar-fill" style={{ width: `${(pick.weight_percent / maxWeight) * 100}%` }} />
+          </span>
+          {pick.weight_percent.toFixed(1)}%
+        </div>
+      </td>
+      <td className="num">
+        <PriceChangeCell pick={pick} />
+      </td>
+      <td className="num">
+        <div className="themes__amount-cell">
+          <span>${pick.dollar_amount.toFixed(2)}</span>
+          <span className="themes__shares">{pick.shares.toFixed(4)} sh</span>
+        </div>
+      </td>
+    </tr>
+  )
+}
+
+function SectorExpander({ group, filingsRelevance, maxWeight }) {
+  const totals = totalSinceBuy(group.picks)
+  const changePercent = totals?.changePercent ?? null
+  const direction = changePercent > 0 ? 'up' : changePercent < 0 ? 'down' : 'flat'
+  return (
+    <details className="card themes__sector" open>
+      <summary className="themes__sector-summary">
+        <span className="themes__sector-name">{group.sector}</span>
+        <span className="themes__sector-count">{group.picks.length} stock{group.picks.length === 1 ? '' : 's'}</span>
+        <span className="themes__sector-weight num">{group.weight.toFixed(1)}%</span>
+        <span className={`themes__sector-return num themes__sector-return--${direction}`}>
+          {changePercent != null ? `${changePercent > 0 ? '+' : ''}${changePercent.toFixed(2)}%` : '—'}
+        </span>
+      </summary>
+      <div className="themes__sector-table-wrap">
         <table className="scan__table themes__table">
           <thead>
             <tr>
@@ -164,39 +214,35 @@ function AllocationTable({ suggestion, amount, filingsRelevance, themeName }) {
             </tr>
           </thead>
           <tbody>
-            {picks.map((pick) => (
-              <tr key={pick.ticker}>
-                <td>
-                  <div className="themes__ticker-cell">
-                    <span className="themes__ticker">{pick.ticker}</span>
-                    <span className="themes__rationale">{pick.rationale}</span>
-                    <FilingsRelevance relevance={filingsRelevance?.[pick.ticker]} />
-                  </div>
-                </td>
-                <td className="num">
-                  <div className="themes__weight-cell">
-                    <span className="themes__weight-bar">
-                      <span
-                        className="themes__weight-bar-fill"
-                        style={{ width: `${(pick.weight_percent / maxWeight) * 100}%` }}
-                      />
-                    </span>
-                    {pick.weight_percent.toFixed(1)}%
-                  </div>
-                </td>
-                <td className="num">
-                  <PriceChangeCell pick={pick} />
-                </td>
-                <td className="num">
-                  <div className="themes__amount-cell">
-                    <span>${pick.dollar_amount.toFixed(2)}</span>
-                    <span className="themes__shares">{pick.shares.toFixed(4)} sh</span>
-                  </div>
-                </td>
-              </tr>
+            {group.picks.map((pick) => (
+              <PickRow key={pick.ticker} pick={pick} filingsRelevance={filingsRelevance} maxWeight={maxWeight} />
             ))}
           </tbody>
         </table>
+      </div>
+    </details>
+  )
+}
+
+function AllocationTable({ suggestion, amount, filingsRelevance, themeName }) {
+  const picks = applyAmount(suggestion.picks, amount)
+  // Relative to the largest pick in *this* basket, not a literal 0-100%
+  // scale - every theme is capped at _MAX_WEIGHT_PERCENT=35 server-side
+  // (agents/theme_builder.py), so a flat 0-100% scale renders every bar
+  // as a near-invisible sliver.
+  const maxWeight = Math.max(...picks.map((p) => p.weight_percent))
+  const sectorGroups = groupBySector(picks)
+  return (
+    <>
+      <ThemeMeta suggestion={suggestion} />
+      <TotalSinceBuyBanner picks={picks} />
+      <h4 className="themes__table-header">
+        Stocks in {themeName} ({picks.length})
+      </h4>
+      <div className="themes__sectors">
+        {sectorGroups.map((group) => (
+          <SectorExpander key={group.sector} group={group} filingsRelevance={filingsRelevance} maxWeight={maxWeight} />
+        ))}
       </div>
       <p className="themes__disclaimer">
         Share counts are illustrative and fractional - whether you can actually buy fractional shares depends on

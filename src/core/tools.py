@@ -113,6 +113,21 @@ def get_pe_ratio(ticker: str) -> float:
     return float(pe_ratio)
 
 
+def get_sector(ticker: str) -> str:
+    """Look up the GICS-style sector for a stock ticker (e.g. 'Technology',
+    'Healthcare') - shares _get_info's cache, so calling this right after
+    get_stock_price/get_market_cap for the same ticker is effectively free.
+
+    Args:
+        ticker: Stock ticker symbol, e.g. 'NVDA'.
+    """
+    info = _get_info(ticker)
+    sector = info.get("sector")
+    if sector is None:
+        raise ValueError(f"No sector found for ticker {ticker!r}")
+    return sector
+
+
 def get_ticker_stats(ticker: str) -> dict:
     """Look up 52-week range, trading volume, dividend yield, sector, logo
     domain, forward P/E, analyst rating/price target, and beta for a stock

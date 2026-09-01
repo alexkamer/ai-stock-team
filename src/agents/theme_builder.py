@@ -32,7 +32,7 @@ from core.config import load_agent
 from core.models import ThemeAllocation
 from core.models_db import ThemePortfolio, ThemePortfolioPick, ThemeSuggestion, ThemeSuggestionPick, _now
 from core.themes import get_filings_relevance, get_theme, get_theme_universe
-from core.tools import get_market_cap, get_price_performance, get_stock_price, parallel_map
+from core.tools import get_market_cap, get_price_performance, get_sector, get_stock_price, parallel_map
 
 _AGENT_RETRIES = 3
 _MIN_PICKS = 3
@@ -266,6 +266,23 @@ def _fetch_current_prices(tickers: list[str]) -> dict[str, float | None]:
     return dict(parallel_map(_fetch, tickers))
 
 
+def _fetch_sectors(tickers: list[str]) -> dict[str, str]:
+    """One sector lookup per distinct ticker, falling back to "Other" for
+    a ticker yfinance has no sector for - the sector-grouped view on the
+    Themes tab needs every pick bucketed somewhere, not a hole in the
+    breakdown."""
+    if not tickers:
+        return {}
+
+    def _fetch(ticker: str) -> tuple[str, str]:
+        try:
+            return ticker, get_sector(ticker)
+        except ValueError:
+            return ticker, "Other"
+
+    return dict(parallel_map(_fetch, tickers))
+
+
 def get_theme_history(db: DbSession, user_id: int) -> list[dict]:
     portfolios = (
         db.query(ThemePortfolio)
@@ -441,6 +458,7 @@ def get_theme_suggestion(theme_key: str, db: DbSession) -> dict | None:
         return None
 
     current_prices = _fetch_current_prices(sorted({p.ticker for p in live.picks}))
+    sectors = _fetch_sectors(sorted({p.ticker for p in live.picks}))
     picks = []
     for p in live.picks:
         current_price = current_prices.get(p.ticker)
@@ -452,6 +470,7 @@ def get_theme_suggestion(theme_key: str, db: DbSession) -> dict | None:
         picks.append(
             {
                 "ticker": p.ticker,
+                "sector": sectors.get(p.ticker, "Other"),
                 "weight_percent": p.weight_percent,
                 "rationale": p.rationale,
                 "relevance_score": p.relevance_score,

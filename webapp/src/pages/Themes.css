@@ -266,21 +266,88 @@
   margin-left: auto;
 }
 
-.themes .scan__table-card {
-  /* Scan.css's shared .scan__table-card is overflow:hidden, which just
-     clips a wide table rather than letting you reach the rest of it -
-     this table's ticker column alone (rationale + filings relevance
-     text) is wide enough to overflow most viewports, so it needs to
-     scroll instead. */
-  overflow-x: auto;
-}
-
 .themes__table-header {
   margin: 0;
-  padding: 12px 16px;
-  border-bottom: 1px solid var(--border);
   font-size: 13px;
   color: var(--text-secondary);
+}
+
+.themes__sectors {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.themes__sector {
+  position: relative;
+  padding: 0;
+  overflow: hidden;
+}
+
+.themes__sector-summary {
+  display: grid;
+  grid-template-columns: 1fr auto 70px 80px;
+  align-items: center;
+  gap: 16px;
+  padding: 12px 16px 12px 22px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.themes__sector-summary::-webkit-details-marker {
+  display: none;
+}
+
+.themes__sector-summary::before {
+  content: '▸';
+  position: absolute;
+  left: 4px;
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.themes__sector[open] > .themes__sector-summary::before {
+  content: '▾';
+}
+
+.themes__sector-name {
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.themes__sector-count {
+  color: var(--text-muted);
+  font-size: 12px;
+  font-family: var(--mono);
+  white-space: nowrap;
+}
+
+.themes__sector-weight {
+  font-family: var(--mono);
+  text-align: right;
+}
+
+.themes__sector-return {
+  font-family: var(--mono);
+  font-weight: 600;
+  text-align: right;
+}
+
+.themes__sector-return--up {
+  color: var(--good);
+}
+
+.themes__sector-return--down {
+  color: var(--critical);
+}
+
+.themes__sector-return--flat {
+  color: var(--text-muted);
+}
+
+.themes__sector-table-wrap {
+  border-top: 1px solid var(--border);
+  overflow-x: auto;
 }
 
 .themes__table {
