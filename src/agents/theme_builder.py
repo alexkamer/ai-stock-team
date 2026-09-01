@@ -45,6 +45,7 @@ from core.tools import (
 _AGENT_RETRIES = 3
 _MIN_PICKS = 3
 _MAX_WEIGHT_PERCENT = 35.0
+_BENCHMARK_TICKER = "SPY"
 _FORMULA_MOMENTUM_WEIGHT = 0.6
 _FORMULA_SIZE_WEIGHT = 0.4
 _FORMULA_MIN_SCORE = 0.05  # floor so no pick gets ~0 weight just for being the smallest/slowest in the set
@@ -516,6 +517,55 @@ def _weighted_risk_metrics(
     }
 
 
+# A fixed, equal-weighted basket of large, sector-diverse names standing
+# in for "a typical large-cap stock" - deliberately not SPY/the S&P 500
+# index itself. An index's own realized return volatility is structurally
+# lower than any individual stock's (that's diversification working as
+# intended across 500 holdings), so comparing a theme's 10-25-stock
+# basket against the *index's* volatility would call every theme "high"
+# regardless of what it actually holds - the two numbers aren't the same
+# kind of thing. This basket lets _weighted_risk_metrics compute the
+# benchmark the exact same way (weight-averaged across individual
+# stocks) as it computes a theme's own numbers, so the comparison is
+# apples-to-apples.
+_RISK_BENCHMARK_TICKERS = [
+    "AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "META",
+    "JPM", "JNJ", "PG", "XOM", "UNH", "V", "HD", "KO", "DIS",
+]
+
+
+def _benchmark_risk_metrics() -> dict:
+    """The "market" side of the Low/Moderate/High call - see
+    _RISK_BENCHMARK_TICKERS for why this is a fixed mega-cap basket
+    rather than the S&P 500 index itself."""
+    tickers = _RISK_BENCHMARK_TICKERS
+    equal_weight = 100 / len(tickers)
+    current_prices = _fetch_current_prices(tickers)
+    picks = [
+        {"ticker": t, "weight_percent": equal_weight, "current_price": current_prices.get(t), "price_at_buy": None}
+        for t in tickers
+    ]
+    return _weighted_risk_metrics(picks, _fetch_eps(tickers), _fetch_volatility(tickers))
+
+
+_RISK_LABEL_LOW_MAX = 0.85
+_RISK_LABEL_HIGH_MIN = 1.25
+
+
+def _risk_label(value: float | None, benchmark_value: float | None) -> str | None:
+    """Low/Moderate/High relative to the S&P 500's own value for the same
+    metric, not a fixed absolute cutoff - a theme within 15% of the
+    market's own volatility/valuation reads as "moderate" either way."""
+    if value is None or not benchmark_value:
+        return None
+    ratio = value / benchmark_value
+    if ratio < _RISK_LABEL_LOW_MAX:
+        return "low"
+    if ratio > _RISK_LABEL_HIGH_MIN:
+        return "high"
+    return "moderate"
+
+
 def get_theme_suggestion(theme_key: str, db: DbSession) -> dict | None:
     """What the Themes tab actually reads: the live suggestion (with
     current prices/since-buy computed in), plus a diff against the
@@ -562,6 +612,9 @@ def get_theme_suggestion(theme_key: str, db: DbSession) -> dict | None:
 
     tickers = sorted({p.ticker for p in live.picks})
     risk_metrics = _weighted_risk_metrics(picks, _fetch_eps(tickers), _fetch_volatility(tickers))
+    benchmark_metrics = _benchmark_risk_metrics()
+    risk_metrics["volatility_label"] = _risk_label(risk_metrics["volatility"], benchmark_metrics["volatility"])
+    risk_metrics["valuation_label"] = _risk_label(risk_metrics["valuation"], benchmark_metrics["valuation"])
 
     return {
         "theme_key": theme_key,
@@ -645,9 +698,6 @@ def _version_return_index(picks: list[ThemeSuggestionPick], start: date, end: da
     normalized = frame.divide(pd.Series(buy_prices))
     weighted = normalized.multiply(pd.Series(weights))
     return weighted.sum(axis=1).dropna()
-
-
-_BENCHMARK_TICKER = "SPY"
 
 
 def _benchmark_series(point_dates: list[str], ticker: str = _BENCHMARK_TICKER) -> list[float | None]:

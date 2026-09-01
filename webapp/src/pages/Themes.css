@@ -126,6 +126,25 @@
   color: var(--text-primary);
 }
 
+.themes__risk-metric-level {
+  font-size: 11px;
+  font-family: var(--mono);
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.themes__risk-metric-level--low {
+  color: var(--good);
+}
+
+.themes__risk-metric-level--moderate {
+  color: var(--signal);
+}
+
+.themes__risk-metric-level--high {
+  color: var(--critical);
+}
+
 .themes__back-link {
   display: inline-block;
   margin-bottom: 6px;

@@ -13,19 +13,41 @@ import './Themes.css'
 // agents/theme_builder.py's _weighted_risk_metrics) - null while the
 // suggestion is still loading, or if there wasn't enough data to compute
 // one (e.g. every pick missing price history).
+const RISK_LEVEL_LABEL = { low: 'Low', moderate: 'Moderate', high: 'High' }
+
+function RiskMetric({ label, value, level }) {
+  return (
+    <span className="themes__risk-metric">
+      <span className="themes__risk-metric-label">{label}</span>
+      <span className="themes__risk-metric-value">{value}</span>
+      {level && (
+        <span className={`themes__risk-metric-level themes__risk-metric-level--${level}`}>
+          {RISK_LEVEL_LABEL[level] ?? level}
+        </span>
+      )}
+    </span>
+  )
+}
+
+// Low/Moderate/High is relative to a fixed basket of large-cap stocks,
+// not a fixed absolute cutoff (see agents/theme_builder.py's
+// _benchmark_risk_metrics) - "High" means more volatile/expensive than a
+// typical large-cap stock right now, not more than some hardcoded number.
 function RiskMetrics({ suggestion }) {
   if (!suggestion) return null
-  const { volatility, valuation } = suggestion
+  const { volatility, valuation, volatility_label, valuation_label } = suggestion
   return (
     <div className="themes__risk-metrics">
-      <span className="themes__risk-metric">
-        <span className="themes__risk-metric-label">Volatility</span>
-        <span className="themes__risk-metric-value">{volatility != null ? `${(volatility * 100).toFixed(1)}%` : '—'}</span>
-      </span>
-      <span className="themes__risk-metric">
-        <span className="themes__risk-metric-label">Valuation (P/E)</span>
-        <span className="themes__risk-metric-value">{valuation != null ? `${valuation.toFixed(1)}x` : '—'}</span>
-      </span>
+      <RiskMetric
+        label="Volatility"
+        value={volatility != null ? `${(volatility * 100).toFixed(1)}%` : '—'}
+        level={volatility_label}
+      />
+      <RiskMetric
+        label="Valuation (P/E)"
+        value={valuation != null ? `${valuation.toFixed(1)}x` : '—'}
+        level={valuation_label}
+      />
     </div>
   )
 }
