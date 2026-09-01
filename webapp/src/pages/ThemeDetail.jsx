@@ -303,6 +303,10 @@ export default function ThemeDetail() {
 
       {error && <div className="error-banner">{error}</div>}
 
+      <div className="card">
+        <ThemePerformanceChart points={performance?.points} updates={performance?.updates} loading={performanceLoading} />
+      </div>
+
       <div className="card themes__build">
         <div className="themes__build-row">
           <label className="themes__amount-label">
@@ -329,13 +333,6 @@ export default function ThemeDetail() {
         {suggestion && (
           <>
             <CandidateBanner candidate={suggestion.candidate} onUpdate={updateTheme} updating={updating} />
-            <div className="card">
-              <ThemePerformanceChart
-                points={performance?.points}
-                updates={performance?.updates}
-                loading={performanceLoading}
-              />
-            </div>
             <AllocationTable suggestion={suggestion} amount={parsedAmount} filingsRelevance={filingsRelevance} />
           </>
         )}
