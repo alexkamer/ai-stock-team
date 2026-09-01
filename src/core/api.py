@@ -382,9 +382,14 @@ def list_themes() -> list[dict]:
 def get_theme_summaries_route(db: DbSession = Depends(get_db)) -> list[dict]:
     """One row per theme for the /themes list page - stock count/preview,
     day/1-month/1-year/since-inception returns, and Low/Moderate/High
-    volatility & valuation (see agents/theme_builder.py's
-    get_theme_summaries). No auth needed, same as /themes - it's public
-    market data about the catalog, not anything user-specific."""
+    volatility & valuation, plus `updated_at` for when that snapshot was
+    last refreshed. A plain read of the theme_summaries table (see
+    agents/theme_builder.py's get_theme_summaries) - no yfinance calls
+    happen here, only in the scheduled refresh_theme_summaries job
+    (agents/refresh_themes.py --summary-only), so visiting this page
+    can't itself trigger rate limiting no matter how often it's loaded.
+    No auth needed, same as /themes - it's public market data about the
+    catalog, not anything user-specific."""
     return get_theme_summaries(db)
 
 

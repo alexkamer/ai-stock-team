@@ -292,6 +292,36 @@ class ThemeFilingsPick(Base):
     generated_at: Mapped[datetime] = mapped_column(DateTime(), default=_now, index=True)
 
 
+class ThemeSummary(Base):
+    """Precomputed Themes-list-page row for one theme_key - stock count +
+    ticker preview, day/1-month/1-year/since-inception return, and
+    volatility/valuation labels (see agents/theme_builder.py's
+    refresh_theme_summaries, run on a schedule alongside
+    refresh_theme_suggestion). Deliberately not computed live per
+    request: a /themes page visit touching every one of the catalog's
+    ~150-250 unique tickers in one burst is exactly what was tripping
+    Yahoo's rate limiter, repeatedly, regardless of how much per-call
+    retry/backoff logic sat on top of it. Reading this table instead
+    means a page visit never calls yfinance at all, no matter how many
+    people load it or how often - one row per theme_key, upserted in
+    place on each refresh (not versioned/archived like ThemeSuggestion -
+    this is a dashboard cache, not P/L history)."""
+
+    __tablename__ = "theme_summaries"
+
+    theme_key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    stock_count: Mapped[int] = mapped_column(default=0)
+    preview_tickers: Mapped[str] = mapped_column(Text(), default="")  # comma-joined, top 5 by weight
+    inception_date: Mapped[date | None] = mapped_column(Date(), nullable=True)
+    day_change_percent: Mapped[float | None] = mapped_column(Float(), nullable=True)
+    one_month_return_percent: Mapped[float | None] = mapped_column(Float(), nullable=True)
+    one_year_return_percent: Mapped[float | None] = mapped_column(Float(), nullable=True)
+    since_inception_percent: Mapped[float | None] = mapped_column(Float(), nullable=True)
+    volatility_label: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    valuation_label: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(), default=_now, onupdate=_now)
+
+
 class LlmCallLog(Base):
     """One row per LLM call whose caller has a DB session - real per-call
     cost via genai_prices, not an estimate. user_id is nullable since some

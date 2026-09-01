@@ -23,7 +23,6 @@ versioning.
 import argparse
 import math
 from datetime import date, datetime, timezone
-from time import monotonic
 
 import pandas as pd
 import yfinance as yf
@@ -31,7 +30,7 @@ from sqlalchemy.orm import Session as DbSession
 
 from core.config import load_agent
 from core.models import ThemeAllocation
-from core.models_db import ThemePortfolio, ThemePortfolioPick, ThemeSuggestion, ThemeSuggestionPick, _now
+from core.models_db import ThemePortfolio, ThemePortfolioPick, ThemeSuggestion, ThemeSuggestionPick, ThemeSummary, _now
 from core.themes import THEME_CATALOG, get_filings_relevance, get_theme, get_theme_universe
 from core.tools import (
     get_annualized_volatility,
@@ -859,8 +858,6 @@ def _weighted_average(picks: list[dict], value_by_ticker: dict[str, float | None
     return round(total / weight_total, 2) if weight_total else None
 
 
-_SUMMARY_CACHE_TTL_SECONDS = 1800  # 30 minutes - this recomputes across the whole catalog's ~150-250 unique tickers (price, day change, 1mo/1yr return, EPS, volatility) in one pass, enough real yfinance volume on its own to risk tripping the rate limiter if redone too often; the day/month/year return columns don't need to be fresher than this anyway (same TTL-cache convention as core/themes.py's _universe_cache)
-_summary_cache: tuple[float, list[dict]] | None = None
 
 
 def _theme_summary_row(
@@ -917,25 +914,23 @@ def _empty_summary_row(theme_key: str) -> dict:
         "since_inception_percent": None,
         "volatility_label": None,
         "valuation_label": None,
+        "updated_at": None,
     }
 
 
-def get_theme_summaries(db: DbSession) -> list[dict]:
-    """One row per theme for the /themes list page - stock count + a
-    top-5 ticker preview, day/1-month/1-year/since-inception returns, and
-    Low/Moderate/High volatility & valuation - the Schwab-style thematic
-    table. Every per-ticker fetch (price, day change, 1mo/1yr return,
-    EPS, volatility) runs once for the *union* of tickers across every
-    theme rather than once per theme - a lot of tickers repeat across
-    baskets (MSFT, NVDA, AMZN...), and at 24 themes this is already
-    enough total volume to trip yfinance's rate limiter without that
-    dedup. Cached whole for _SUMMARY_CACHE_TTL_SECONDS on top of that,
-    since it's real market data across the entire catalog, not a stored
-    snapshot."""
-    global _summary_cache
-    if _summary_cache is not None and monotonic() - _summary_cache[0] < _SUMMARY_CACHE_TTL_SECONDS:
-        return _summary_cache[1]
+def refresh_theme_summaries(db: DbSession) -> list[dict]:
+    """Recomputes every theme's /themes-list-page row and upserts it into
+    theme_summaries - stock count + a top-5 ticker preview, day/1-month/
+    1-year/since-inception returns, and Low/Moderate/High volatility &
+    valuation. Meant to run on a schedule (agents/refresh_themes.py),
+    NOT per page visit - get_theme_summaries below is what the API
+    actually reads, and it's a plain DB read with zero yfinance calls.
 
+    Every per-ticker fetch (price, day change, 1mo/1yr return, EPS,
+    volatility) still runs once for the *union* of tickers across every
+    theme rather than once per theme - a lot of tickers repeat across
+    baskets (MSFT, NVDA, AMZN...) - since this is real yfinance volume
+    regardless of who triggers it or how often."""
     live_by_key = {theme["key"]: _get_suggestion(db, theme["key"], "live") for theme in THEME_CATALOG}
     all_tickers = sorted({p.ticker for live in live_by_key.values() if live is not None for p in live.picks})
 
@@ -978,8 +973,58 @@ def get_theme_summaries(db: DbSession) -> list[dict]:
         except Exception:
             rows.append(_empty_summary_row(theme["key"]))
 
-    _summary_cache = (monotonic(), rows)
+    for row in rows:
+        inception_date = date.fromisoformat(row["inception_date"]) if row["inception_date"] else None
+        existing = db.get(ThemeSummary, row["key"])
+        if existing is None:
+            existing = ThemeSummary(theme_key=row["key"])
+            db.add(existing)
+        existing.stock_count = row["stock_count"]
+        existing.preview_tickers = ",".join(row["preview_tickers"])
+        existing.inception_date = inception_date
+        existing.day_change_percent = row["day_change_percent"]
+        existing.one_month_return_percent = row["one_month_return_percent"]
+        existing.one_year_return_percent = row["one_year_return_percent"]
+        existing.since_inception_percent = row["since_inception_percent"]
+        existing.volatility_label = row["volatility_label"]
+        existing.valuation_label = row["valuation_label"]
+        existing.updated_at = _now()
+    db.commit()
+
     return rows
+
+
+def get_theme_summaries(db: DbSession) -> list[dict]:
+    """What the /themes list page actually reads - the last
+    refresh_theme_summaries snapshot for every theme, straight from the
+    DB. No yfinance calls here at all, so a page visit (however many
+    people, however often) can never be what trips a rate limit - only
+    the scheduled refresh can. A theme with no row yet (refresh hasn't
+    run since it was added to the catalog) gets an empty row rather than
+    being omitted, so it still shows up in the list."""
+    rows_by_key = {row.theme_key: row for row in db.query(ThemeSummary).all()}
+    summaries = []
+    for theme in THEME_CATALOG:
+        row = rows_by_key.get(theme["key"])
+        if row is None:
+            summaries.append(_empty_summary_row(theme["key"]))
+            continue
+        summaries.append(
+            {
+                "key": row.theme_key,
+                "stock_count": row.stock_count,
+                "preview_tickers": row.preview_tickers.split(",") if row.preview_tickers else [],
+                "inception_date": row.inception_date.isoformat() if row.inception_date else None,
+                "day_change_percent": row.day_change_percent,
+                "one_month_return_percent": row.one_month_return_percent,
+                "one_year_return_percent": row.one_year_return_percent,
+                "since_inception_percent": row.since_inception_percent,
+                "volatility_label": row.volatility_label,
+                "valuation_label": row.valuation_label,
+                "updated_at": row.updated_at.isoformat(),
+            }
+        )
+    return summaries
 
 
 def _main() -> None:

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { getJSON } from '../api/client'
+import { parseServerDate } from '../lib/serverDate'
 import './StockTeam.css'
 import './Scan.css'
 import './Themes.css'
@@ -106,6 +107,16 @@ export default function Themes() {
       .finally(() => setSummariesLoading(false))
   }, [])
 
+  // Every row's data was refreshed in the same scheduled pass (see
+  // agents/refresh_themes.py --summary-only), so any row's updated_at
+  // represents "when the whole snapshot below was last refreshed" - not
+  // a per-row freshness indicator.
+  const latestUpdatedAt = Object.values(summaries)
+    .map((s) => s.updated_at)
+    .filter(Boolean)
+    .sort()
+    .at(-1)
+
   return (
     <div className="scan themes">
       <div className="scan__header">
@@ -118,16 +129,15 @@ export default function Themes() {
         </div>
       </div>
 
-      {summariesLoading && (
-        <p className="scan__empty">
-          Loading return/volatility data across every theme - this pulls live market data for every ticker in the
-          catalog, so a cold load can take up to a minute. It's cached after that.
+      {latestUpdatedAt && (
+        <p className="themes__summary-updated-note">
+          Market data as of {parseServerDate(latestUpdatedAt).toLocaleString()}
         </p>
       )}
       {summariesError && (
         <div className="error-banner">
-          Couldn't load market data for the themes below (Yahoo Finance may be rate-limiting right now) - theme names
-          and descriptions still work, try refreshing in a bit for the rest.
+          Couldn't load market data for the themes below - theme names and descriptions still work, try refreshing in
+          a bit for the rest.
         </div>
       )}
 

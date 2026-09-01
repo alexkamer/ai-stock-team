@@ -1,22 +1,31 @@
 """Cron entry point: refreshes every theme's suggestion in one pass.
 
-    uv run python -m agents.refresh_themes            # ranking only, all themes - free
-    uv run python -m agents.refresh_themes --filings   # + re-score filings-sourced themes first
+    uv run python -m agents.refresh_themes                # ranking only, all themes - free
+    uv run python -m agents.refresh_themes --filings       # + re-score filings-sourced themes first
+    uv run python -m agents.refresh_themes --summary-only  # just the /themes list-page snapshot
 
-Two schedules, one script, because the two steps have very different
-costs: refresh_theme_suggestion (agents/theme_builder.py) is pure market
-data - no LLM call, safe to run often. refresh_theme_filings_universe
-(agents/theme_filings_scorer.py) is an LLM relevance-scoring pass over
-SEC EDGAR hits - real dollars, and pointless to re-run more often than
-filers actually re-file (10-Ks are ~quarterly at most). Suggested cron:
+Three schedules, one script, because the three steps have very different
+costs and freshness needs: refresh_theme_suggestion (agents/theme_builder.py)
+is pure market data - no LLM call, safe to run often, but the ranking itself
+doesn't need to move more than weekly. refresh_theme_filings_universe
+(agents/theme_filings_scorer.py) is an LLM relevance-scoring pass over SEC
+EDGAR hits - real dollars, and pointless to re-run more often than filers
+actually re-file (10-Ks are ~quarterly at most). refresh_theme_summaries is
+the /themes list page's day/1-month/1-year/since-inception/volatility/
+valuation snapshot - cheap-ish (no LLM) but real yfinance volume across
+every theme's tickers in one pass, and wants to be fresher than the weekly
+suggestion refresh since day-change means "today." Suggested cron:
 
-    0 6 * * 1       cd repo && uv run python -m agents.refresh_themes            # weekly
-    0 6 1 * *       cd repo && uv run python -m agents.refresh_themes --filings  # monthly
+    0 6 * * 1       cd repo && uv run python -m agents.refresh_themes                  # weekly
+    0 6 1 * *       cd repo && uv run python -m agents.refresh_themes --filings        # monthly
+    0 * * * *       cd repo && uv run python -m agents.refresh_themes --summary-only   # hourly
 
 Only `--filings` day runs the scorer, and only for themes with
 `source == "filings"` - everything else always just re-ranks off
 whatever universe (seed list, industry screen, or last filings run)
-core.themes.get_theme_universe already resolves.
+core.themes.get_theme_universe already resolves. `--summary-only` skips
+the suggestion/filings refresh entirely - it's meant to run standalone,
+much more often, not bundled with the weekly pass.
 
 A per-theme failure (bad ticker data, EDGAR/Bedrock hiccup) is caught and
 reported, not fatal - one theme's transient failure shouldn't block the
@@ -28,7 +37,7 @@ import asyncio
 
 from core.db import SessionLocal
 from core.themes import THEME_CATALOG
-from agents.theme_builder import refresh_theme_suggestion
+from agents.theme_builder import refresh_theme_suggestion, refresh_theme_summaries
 from agents.theme_filings_scorer import refresh_theme_filings_universe
 
 
@@ -51,10 +60,29 @@ async def refresh_all(include_filings: bool) -> list[dict]:
     return results
 
 
+def _run_summary_only() -> None:
+    db = SessionLocal()
+    try:
+        rows = refresh_theme_summaries(db)
+    finally:
+        db.close()
+    for row in rows:
+        print(f"{row['key']}: {row['stock_count']} stocks, since_inception={row['since_inception_percent']}")
+
+
 def _main() -> None:
     parser = argparse.ArgumentParser(description="Refresh every theme's suggestion (see module docstring)")
     parser.add_argument("--filings", action="store_true", help="Also re-run the LLM filings scorer for filings-sourced themes")
+    parser.add_argument(
+        "--summary-only",
+        action="store_true",
+        help="Only refresh the /themes list-page snapshot (day/1mo/1yr/inception/volatility/valuation) - skips suggestion/filings refresh",
+    )
     args = parser.parse_args()
+
+    if args.summary_only:
+        _run_summary_only()
+        return
 
     results = asyncio.run(refresh_all(args.filings))
 

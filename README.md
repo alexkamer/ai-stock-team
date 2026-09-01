@@ -169,9 +169,8 @@ Every price/fundamentals lookup in this app goes through
 [yfinance](https://github.com/ranaroussi/yfinance), which scrapes Yahoo
 Finance's internal web endpoints rather than calling an official,
 key-authenticated API. There's no published rate limit and no SLA - under
-enough sustained traffic (e.g. loading the Themes tab, which pulls
-price/EPS/volatility data across the whole catalog's tickers) Yahoo will
-start rejecting requests, in a couple of different ways:
+enough sustained traffic Yahoo will start rejecting requests, in a couple
+of different ways:
 
 - **`Too Many Requests. Rate limited.`** - a plain rate limit. Usually
   clears on its own within a few minutes.
@@ -183,14 +182,27 @@ start rejecting requests, in a couple of different ways:
   up from a plain rate limit. Same fix: restart, then back off for a bit.
 
 None of these crash the app - every yfinance call site either falls back to
-`null`/omits that item, or (for the handful of direct `.history()`/`.info`
-calls) retries a couple of times with backoff first (`with_yf_retries` in
-`src/core/tools.py`). You'll just see blank cells/missing data on whatever
-got rate-limited until it clears. If you're iterating on backend code with
-`--reload`, note that every file save restarts the process and wipes all
-the in-memory caches (`core/tools.py`'s `_info_cache`, `core/themes.py`'s
-`_universe_cache`, `agents/theme_builder.py`'s `_summary_cache`), so heavy
-editing sessions will hit this more than normal usage does.
+`null`/omits that item, or retries a couple of times with backoff first
+(`with_yf_retries` in `src/core/tools.py`, with a circuit breaker so a
+*sustained* block fails fast instead of every caller separately paying the
+full retry cost). You'll just see blank cells/missing data on whatever got
+rate-limited until it clears. If you're iterating on backend code with
+`--reload`, note that every file save restarts the process and wipes the
+in-memory caches (`core/tools.py`'s `_info_cache`, `core/themes.py`'s
+`_universe_cache`), so heavy editing sessions will hit this more than
+normal usage does.
+
+The Themes tab used to be the single biggest source of this: `/themes`
+pulled live price/EPS/volatility/return data across the *whole catalog's*
+tickers in one burst on every page visit, which was enough volume on its
+own to reliably trip the rate limiter regardless of how many people were
+using the app. That's no longer computed per-request - see "Refresh
+cadence" above. `GET /themes/summary` is now a plain database read with
+zero yfinance calls; only the scheduled `--summary-only` refresh touches
+Yahoo at all, so visiting the page can't cause this anymore. The remaining
+yfinance-heavy paths are the theme *detail* page (one theme's ~10-25
+tickers, much smaller) and the dashboard's market screens (most-active,
+gainers/losers, trending).
 
 ## Tour of the web app
 
@@ -276,7 +288,15 @@ more often and momentum-driven reweights barely move. Adding `--filings`
 (also re-scores filings-sourced themes' universe via the LLM, roughly
 $0.10–0.25/theme) should only run **monthly**, since 10-Ks file at most
 quarterly and re-scoring the same filings more often just burns money for
-no new signal.
+no new signal. A third mode, `agents.refresh_themes --summary-only`,
+refreshes the Themes list page's day/1-month/1-year/since-inception/
+volatility/valuation snapshot (`theme_summaries` table) and should run
+**hourly** - this used to be computed live on every `/themes` page visit
+across the whole catalog's tickers in one burst, which was enough real
+yfinance volume by itself to reliably trip Yahoo's rate limiter; moving
+it to a scheduled job means loading the page can never trigger a fetch at
+all, no matter how many people load it or how often - `GET /themes/summary`
+is now a plain, instant database read.
 
 **Research Chat (`/chat`)** — open-ended Q&A about any stock, backed by a
 tool-using agent (price, market cap, P/E, day change, history, news,

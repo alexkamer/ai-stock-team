@@ -1,3 +1,10 @@
+.themes__summary-updated-note {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-family: var(--mono);
+}
+
 .themes__summary-table-card {
   overflow-x: auto;
 }
