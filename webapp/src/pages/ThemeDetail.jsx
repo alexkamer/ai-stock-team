@@ -8,11 +8,26 @@ import './StockTeam.css'
 import './Scan.css'
 import './Themes.css'
 
-const RISK_LABEL = { lower: 'Lower risk', moderate: 'Moderate risk', higher: 'Higher risk' }
-
-function RiskBadge({ level }) {
-  if (!level) return null
-  return <span className={`risk-badge risk-badge--${level}`}>{RISK_LABEL[level] ?? level}</span>
+// Volatility/valuation replace the old static "HIGHER RISK" label with a
+// number actually computed from this theme's current picks (see
+// agents/theme_builder.py's _weighted_risk_metrics) - null while the
+// suggestion is still loading, or if there wasn't enough data to compute
+// one (e.g. every pick missing price history).
+function RiskMetrics({ suggestion }) {
+  if (!suggestion) return null
+  const { volatility, valuation } = suggestion
+  return (
+    <div className="themes__risk-metrics">
+      <span className="themes__risk-metric">
+        <span className="themes__risk-metric-label">Volatility</span>
+        <span className="themes__risk-metric-value">{volatility != null ? `${(volatility * 100).toFixed(1)}%` : '—'}</span>
+      </span>
+      <span className="themes__risk-metric">
+        <span className="themes__risk-metric-label">Valuation (P/E)</span>
+        <span className="themes__risk-metric-value">{valuation != null ? `${valuation.toFixed(1)}x` : '—'}</span>
+      </span>
+    </div>
+  )
 }
 
 function formatSimpleDate(dateOnlyIso) {
@@ -373,12 +388,9 @@ export default function ThemeDetail() {
             ← All themes
           </Link>
           <h2>{theme?.name ?? themeKey}</h2>
-          {theme && (
-            <p className="scan__subtitle">
-              {theme.description} <RiskBadge level={theme.risk_level} />
-            </p>
-          )}
+          {theme && <p className="scan__subtitle">{theme.description}</p>}
         </div>
+        <RiskMetrics suggestion={suggestion} />
       </div>
 
       {error && <div className="error-banner">{error}</div>}

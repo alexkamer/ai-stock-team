@@ -1,5 +1,6 @@
 """Plain functions the agent can call as tools. Registered onto an Agent in config.py."""
 
+import math
 import re
 from collections.abc import Callable, Iterable
 from concurrent.futures import ThreadPoolExecutor
@@ -126,6 +127,36 @@ def get_sector(ticker: str) -> str:
     if sector is None:
         raise ValueError(f"No sector found for ticker {ticker!r}")
     return sector
+
+
+def get_eps(ticker: str) -> float:
+    """Look up trailing diluted earnings per share for a stock ticker.
+
+    Args:
+        ticker: Stock ticker symbol, e.g. 'NVDA'.
+    """
+    info = _get_info(ticker)
+    eps = info.get("trailingEps")
+    if eps is None:
+        raise ValueError(f"No EPS found for ticker {ticker!r}")
+    return float(eps)
+
+
+def get_annualized_volatility(ticker: str, period: str = "1y") -> float:
+    """Annualized volatility - the standard deviation of daily returns,
+    scaled by sqrt(252) trading days - for a stock ticker. The classic
+    "how much does this bounce around" measure, as opposed to beta (which
+    measures co-movement with the market rather than raw magnitude).
+
+    Args:
+        ticker: Stock ticker symbol, e.g. 'NVDA'.
+        period: History window to compute volatility over, e.g. '1y'.
+    """
+    history = yf.Ticker(ticker).history(period=period)
+    returns = history["Close"].pct_change().dropna()
+    if len(returns) < 2:
+        raise ValueError(f"Not enough price history to compute volatility for ticker {ticker!r}")
+    return float(returns.std() * math.sqrt(252))
 
 
 def get_ticker_stats(ticker: str) -> dict:

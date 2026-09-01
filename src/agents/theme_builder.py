@@ -32,7 +32,15 @@ from core.config import load_agent
 from core.models import ThemeAllocation
 from core.models_db import ThemePortfolio, ThemePortfolioPick, ThemeSuggestion, ThemeSuggestionPick, _now
 from core.themes import get_filings_relevance, get_theme, get_theme_universe
-from core.tools import get_market_cap, get_price_performance, get_sector, get_stock_price, parallel_map
+from core.tools import (
+    get_annualized_volatility,
+    get_eps,
+    get_market_cap,
+    get_price_performance,
+    get_sector,
+    get_stock_price,
+    parallel_map,
+)
 
 _AGENT_RETRIES = 3
 _MIN_PICKS = 3
@@ -446,6 +454,68 @@ def _diff_suggestions(live: ThemeSuggestion, candidate: ThemeSuggestion) -> dict
     }
 
 
+def _fetch_eps(tickers: list[str]) -> dict[str, float | None]:
+    if not tickers:
+        return {}
+
+    def _fetch(ticker: str) -> tuple[str, float | None]:
+        try:
+            return ticker, get_eps(ticker)
+        except ValueError:
+            return ticker, None
+
+    return dict(parallel_map(_fetch, tickers))
+
+
+def _fetch_volatility(tickers: list[str]) -> dict[str, float | None]:
+    if not tickers:
+        return {}
+
+    def _fetch(ticker: str) -> tuple[str, float | None]:
+        try:
+            return ticker, get_annualized_volatility(ticker)
+        except ValueError:
+            return ticker, None
+
+    return dict(parallel_map(_fetch, tickers))
+
+
+def _weighted_risk_metrics(
+    picks: list[dict], eps_by_ticker: dict[str, float | None], vol_by_ticker: dict[str, float | None]
+) -> dict:
+    """Volatility: a weight-averaged annualized volatility across the
+    theme's picks - "the magnitude and frequency of change in the
+    securities' values, as weighted in the theme" - renormalized over
+    just the picks with data (a missing ticker shouldn't silently drag
+    the average toward zero). Valuation: an aggregate P/E - the sum of
+    each pick's weighted price divided by the sum of its weighted EPS,
+    the same index-style method (not an average of individual P/E
+    ratios) real indices use so one extreme P/E doesn't dominate; picks
+    with no or negative EPS are excluded from both sums since a negative
+    P/E isn't a meaningful valuation signal."""
+    weighted_vol = 0.0
+    vol_weight_total = 0.0
+    weighted_price = 0.0
+    weighted_eps = 0.0
+    for p in picks:
+        weight = p["weight_percent"] / 100
+        vol = vol_by_ticker.get(p["ticker"])
+        if vol is not None:
+            weighted_vol += weight * vol
+            vol_weight_total += weight
+
+        eps = eps_by_ticker.get(p["ticker"])
+        price = p["current_price"] or p["price_at_buy"]
+        if eps is not None and eps > 0 and price is not None:
+            weighted_price += weight * price
+            weighted_eps += weight * eps
+
+    return {
+        "volatility": round(weighted_vol / vol_weight_total, 4) if vol_weight_total else None,
+        "valuation": round(weighted_price / weighted_eps, 2) if weighted_eps else None,
+    }
+
+
 def get_theme_suggestion(theme_key: str, db: DbSession) -> dict | None:
     """What the Themes tab actually reads: the live suggestion (with
     current prices/since-buy computed in), plus a diff against the
@@ -490,6 +560,9 @@ def get_theme_suggestion(theme_key: str, db: DbSession) -> dict | None:
             **_diff_suggestions(live, candidate),
         }
 
+    tickers = sorted({p.ticker for p in live.picks})
+    risk_metrics = _weighted_risk_metrics(picks, _fetch_eps(tickers), _fetch_volatility(tickers))
+
     return {
         "theme_key": theme_key,
         "summary": live.summary,
@@ -498,6 +571,7 @@ def get_theme_suggestion(theme_key: str, db: DbSession) -> dict | None:
         "promoted_at": live.promoted_at.isoformat() if live.promoted_at else None,
         "picks": picks,
         "candidate": candidate_summary,
+        **risk_metrics,
     }
 
 

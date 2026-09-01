@@ -99,6 +99,33 @@
   visibility: hidden;
 }
 
+.themes__risk-metrics {
+  display: flex;
+  gap: 20px;
+  flex-shrink: 0;
+}
+
+.themes__risk-metric {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  align-items: flex-end;
+}
+
+.themes__risk-metric-label {
+  color: var(--text-muted);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.themes__risk-metric-value {
+  font-family: var(--mono);
+  font-weight: 600;
+  font-size: 16px;
+  color: var(--text-primary);
+}
+
 .themes__back-link {
   display: inline-block;
   margin-bottom: 6px;
