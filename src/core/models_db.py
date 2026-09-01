@@ -195,8 +195,92 @@ class ThemePortfolioPick(Base):
     dollar_amount: Mapped[float] = mapped_column(Float())
     shares: Mapped[float] = mapped_column(Float())
     rationale: Mapped[str] = mapped_column(Text())
+    price_at_buy: Mapped[float | None] = mapped_column(Float(), nullable=True)
 
     theme_portfolio: Mapped["ThemePortfolio"] = relationship(back_populates="picks")
+
+
+class ThemeSuggestion(Base):
+    """A theme's shared model-portfolio allocation - one 'live' row per
+    theme_key that every user sees (not per-user, not per dollar amount:
+    the Themes tab now displays this and scales dollar_amount/shares from
+    weight_percent client-side, rather than re-running the ranking on
+    every visit - see agents/theme_builder.py's refresh_theme_suggestion).
+
+    A cron re-run writes a 'candidate' row instead of overwriting 'live'
+    directly, so an already-tracked since-buy return isn't silently
+    reset - promote_theme_suggestion is the only thing that flips a
+    candidate to live, and it re-stamps price_at_buy at promotion time,
+    not candidate-generation time, so since-buy starts exactly when a
+    version is actually adopted."""
+
+    __tablename__ = "theme_suggestions"
+    __table_args__ = (UniqueConstraint("theme_key", "status", name="uq_theme_suggestion_theme_status"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    theme_key: Mapped[str] = mapped_column(String(32), index=True)
+    status: Mapped[str] = mapped_column(String(16))  # "live" or "candidate"
+    summary: Mapped[str] = mapped_column(Text())
+    quality_score: Mapped[float | None] = mapped_column(Float(), nullable=True)
+    """Average relevance_score across this version's picks, for a
+    filings-sourced theme - a proxy for selection quality, not a
+    performance guarantee. None for a seed/industry-sourced theme, which
+    has no per-pick relevance score to average."""
+    generated_at: Mapped[datetime] = mapped_column(DateTime(), default=_now)
+    promoted_at: Mapped[datetime | None] = mapped_column(DateTime(), nullable=True)
+
+    picks: Mapped[list["ThemeSuggestionPick"]] = relationship(
+        back_populates="theme_suggestion", cascade="all, delete-orphan"
+    )
+
+
+class ThemeSuggestionPick(Base):
+    """One ticker's slice of a ThemeSuggestion - weight_percent is what
+    the frontend multiplies by a user's chosen dollar amount; price_at_buy
+    is only meaningful on a 'live' suggestion's picks (a candidate's
+    price_at_buy is provisional until promotion re-stamps it)."""
+
+    __tablename__ = "theme_suggestion_picks"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    theme_suggestion_id: Mapped[int] = mapped_column(ForeignKey("theme_suggestions.id"), index=True)
+    ticker: Mapped[str] = mapped_column(String(16))
+    weight_percent: Mapped[float] = mapped_column(Float())
+    rationale: Mapped[str] = mapped_column(Text())
+    relevance_score: Mapped[float | None] = mapped_column(Float(), nullable=True)
+    price_at_buy: Mapped[float] = mapped_column(Float())
+
+    theme_suggestion: Mapped["ThemeSuggestion"] = relationship(back_populates="picks")
+
+
+class ThemeFilingsPick(Base):
+    """One EDGAR candidate considered for a "filings"-sourced theme (see
+    agents/theme_filings_scorer.py and core/themes.py's get_theme_universe)
+    - not just the winners, so a run is auditable end to end: `status`
+    says where a candidate fell out of the pipeline (or that it made the
+    cut), and relevance_score/rationale are only set once the LLM actually
+    scored it (a market-cap/candidate-cap drop never reaches that step).
+    A full row set for a theme_key is replaced wholesale on each scorer
+    run rather than updated in place, so generated_at is the same for
+    every row from one run and there's never a mix of stale and fresh
+    rows for a theme."""
+
+    __tablename__ = "theme_filings_picks"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    theme_key: Mapped[str] = mapped_column(String(32), index=True)
+    ticker: Mapped[str] = mapped_column(String(16))
+    status: Mapped[str] = mapped_column(String(20))
+    """One of: "kept" (in the final universe), "below_threshold" (LLM-scored
+    but under _MIN_RELEVANCE_SCORE), "dropped_market_cap" (EDGAR match but no
+    tradeable/large-enough equity), "dropped_uncapped" (EDGAR match but
+    outside _MAX_LLM_CANDIDATES so never sent to the LLM)."""
+    hit_count: Mapped[int] = mapped_column(default=0)
+    matched_keywords: Mapped[str] = mapped_column(Text(), default="")
+    market_cap: Mapped[float | None] = mapped_column(Float(), nullable=True)
+    relevance_score: Mapped[float | None] = mapped_column(Float(), nullable=True)
+    rationale: Mapped[str | None] = mapped_column(Text(), nullable=True)
+    generated_at: Mapped[datetime] = mapped_column(DateTime(), default=_now, index=True)
 
 
 class LlmCallLog(Base):

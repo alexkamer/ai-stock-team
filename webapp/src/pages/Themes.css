@@ -1,49 +1,58 @@
 .themes__grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-  gap: 14px;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 10px;
 }
 
 .themes__card {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
   text-align: left;
   font-family: inherit;
   cursor: pointer;
-  transition: border-color 0.15s ease;
+  border-left: 3px solid transparent;
+  transition: border-color 0.15s ease, background 0.15s ease;
 }
 
 .themes__card:hover {
-  border-color: var(--signal-border);
+  background: var(--surface-2);
+}
+
+.themes__card--lower {
+  border-left-color: var(--good);
+}
+
+.themes__card--moderate {
+  border-left-color: var(--signal);
+}
+
+.themes__card--higher {
+  border-left-color: var(--critical);
 }
 
 .themes__card--selected {
   border-color: var(--signal);
-}
-
-.themes__card-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
+  background: var(--surface-2);
 }
 
 .themes__card h3 {
   margin: 0;
-  font-size: 16px;
+  font-size: 15px;
 }
 
 .themes__card p {
   margin: 0;
   color: var(--text-secondary);
   font-size: 13px;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 .risk-badge {
-  flex-shrink: 0;
-  padding: 3px 10px;
-  border-radius: 3px;
+  align-self: flex-start;
   font-size: 11px;
   font-family: var(--mono);
   text-transform: uppercase;
@@ -51,17 +60,14 @@
 }
 
 .risk-badge--lower {
-  background: var(--good-bg);
   color: var(--good);
 }
 
 .risk-badge--moderate {
-  background: var(--signal-bg);
   color: var(--signal);
 }
 
 .risk-badge--higher {
-  background: var(--critical-bg);
   color: var(--critical);
 }
 
@@ -109,28 +115,173 @@
   outline: none;
 }
 
+.themes__meta {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
 .themes__summary {
   margin: 0;
   color: var(--text-secondary);
   font-size: 13px;
 }
 
-.themes__rationale {
-  color: var(--text-secondary);
+.themes__generated-label {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-family: var(--mono);
+}
+
+.themes__total-banner {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 10px 14px;
+  border-radius: 4px;
+  background: var(--surface-2);
   font-size: 13px;
-  max-width: 320px;
+}
+
+.themes__total-label {
+  color: var(--text-secondary);
+}
+
+.themes__total-change {
+  font-family: var(--mono);
+  font-weight: 600;
+  font-size: 15px;
+}
+
+.themes__total-banner--up .themes__total-change {
+  color: var(--good);
+}
+
+.themes__total-banner--down .themes__total-change {
+  color: var(--critical);
+}
+
+.themes__total-banner--flat .themes__total-change {
+  color: var(--text-muted);
+}
+
+.themes__total-detail {
+  color: var(--text-muted);
+  font-family: var(--mono);
+  font-size: 12px;
+  margin-left: auto;
+}
+
+.themes .scan__table-card {
+  /* Scan.css's shared .scan__table-card is overflow:hidden, which just
+     clips a wide table rather than letting you reach the rest of it -
+     this table's ticker column alone (rationale + filings relevance
+     text) is wide enough to overflow most viewports, so it needs to
+     scroll instead. */
+  overflow-x: auto;
+}
+
+.themes__table {
+  min-width: 640px;
+}
+
+.themes__table th:nth-child(2),
+.themes__table th:nth-child(3),
+.themes__table th:nth-child(4) {
+  text-align: right;
+}
+
+.themes__ticker-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.themes__ticker {
+  font-family: var(--mono);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.themes__rationale {
+  color: var(--text-muted);
+  font-size: 12px;
+  max-width: 560px;
+}
+
+.themes__filings-relevance {
+  margin: 2px 0 0;
+  color: var(--text-muted);
+  font-size: 12px;
+  max-width: 560px;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.themes__filings-relevance-label {
+  color: var(--text-secondary);
+  font-weight: 600;
+}
+
+.themes__amount-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+}
+
+.themes__shares {
+  color: var(--text-muted);
+  font-size: 11px;
+  font-family: var(--mono);
+}
+
+.themes__price-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  white-space: nowrap;
+}
+
+.themes__price-change {
+  font-family: var(--mono);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.themes__price-change--up {
+  color: var(--good);
+}
+
+.themes__price-change--down {
+  color: var(--critical);
+}
+
+.themes__price-change--flat {
+  color: var(--text-muted);
+}
+
+.themes__price-detail {
+  color: var(--text-muted);
+  font-size: 11px;
+  font-family: var(--mono);
 }
 
 .themes__weight-cell {
   display: flex;
   align-items: center;
+  justify-content: flex-end;
   gap: 8px;
   white-space: nowrap;
 }
 
 .themes__weight-bar {
   display: inline-block;
-  width: 60px;
+  width: 72px;
   height: 6px;
   border-radius: 3px;
   background: var(--surface-2);
@@ -150,108 +301,70 @@
   font-size: 12px;
 }
 
-.method-badge {
-  flex-shrink: 0;
-  padding: 3px 10px;
-  border-radius: 3px;
-  font-size: 11px;
-  font-family: var(--mono);
-  text-transform: uppercase;
-  letter-spacing: 0.02em;
-  background: var(--surface-2);
-  color: var(--text-secondary);
-}
-
-.themes__history {
+.themes__candidate-banner {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 8px;
+  border-left: 3px solid var(--signal);
 }
 
-.themes__history h3 {
-  margin: 0;
-}
-
-.themes__history-group {
-  padding: 0;
-  overflow: hidden;
-}
-
-.themes__history-group-header {
+.themes__candidate-header {
   display: flex;
   align-items: center;
-  gap: 10px;
-  width: 100%;
-  padding: 14px 18px;
-  background: none;
-  border: none;
-  font-family: inherit;
-  font-size: 14px;
-  color: var(--text-primary);
-  cursor: pointer;
-  text-align: left;
-}
-
-.themes__history-group-header:hover {
-  background: var(--surface-2);
-}
-
-.themes__history-group-header .scan__count {
-  margin-left: auto;
-}
-
-.themes__history-chevron {
-  display: inline-block;
-  color: var(--text-muted);
-  font-size: 11px;
-  transition: transform 0.12s ease;
-}
-
-.themes__history-chevron--open {
-  transform: rotate(90deg);
-}
-
-.themes__history-entries {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  padding: 0 18px 16px;
-  border-top: 1px solid var(--border);
-}
-
-.themes__history-card {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding: 12px 8px 0;
-  width: 100%;
-  background: none;
-  border: none;
-  font-family: inherit;
-  text-align: left;
-  cursor: pointer;
-  border-radius: 3px;
-  transition: background 0.12s ease;
-}
-
-.themes__history-card:hover {
-  background: var(--surface-2);
-}
-
-.themes__history-entries .themes__history-card + .themes__history-card {
-  border-top: 1px solid var(--border);
-}
-
-.themes__history-header {
-  display: flex;
-  align-items: baseline;
   justify-content: space-between;
   gap: 12px;
 }
 
-.themes__history-tickers {
+.themes__candidate-quality {
   margin: 0;
-  color: var(--text-muted);
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.themes__candidate-diff {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.themes__candidate-diff-group {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.themes__candidate-diff-group-label {
+  flex-shrink: 0;
+  width: 76px;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.themes__candidate-diff-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
   font-family: var(--mono);
   font-size: 12px;
+}
+
+.themes__candidate-diff-chips li {
+  padding: 2px 8px;
+  border-radius: 3px;
+  background: var(--surface-2);
+}
+
+.themes__candidate-diff-add {
+  color: var(--good);
+}
+
+.themes__candidate-diff-remove {
+  color: var(--critical);
+}
+
+.themes__candidate-diff-reweight {
+  color: var(--text-secondary);
 }

@@ -73,6 +73,20 @@ class ThemeAllocationPick(BaseModel):
     )
 
 
+class ThemeRelevanceScore(BaseModel):
+    score: float = Field(
+        description="0.0-1.0 relevance of this company's business to the theme, based on the matched "
+        "10-K excerpt(s) - 1.0 means the theme is core to how the company makes money, 0.0 means the "
+        "keyword match is coincidental/unrelated"
+    )
+    rationale: str = Field(description="One sentence citing what in the filing justifies the score")
+
+    @field_validator("score")
+    @classmethod
+    def _clamp_score(cls, value: float) -> float:
+        return max(0.0, min(1.0, value))
+
+
 class ThemeAllocation(BaseModel):
     picks: list[ThemeAllocationPick] = Field(description="One entry per stock included in the basket")
     summary: str = Field(

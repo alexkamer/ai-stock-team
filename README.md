@@ -22,7 +22,7 @@ An AI-powered stock research app built with [pydantic-ai](https://ai.pydantic.de
 ## What's here
 
 - **CLI** — point it at a ticker, get a structured snapshot: price, market cap, P/E, sentiment, and a short summary.
-- **Web app** — a dashboard with an editable watchlist, market screens (stocks/options/private companies), a per-ticker detail page with an interactive price chart, a multi-agent buy/hold/sell verdict page, a Buy Scan that runs that same verdict engine over today's market movers to surface new ideas, a Themes tab that turns a curated investment theme into a data-ranked dollar allocation, a Track Record page scoring past AI verdicts against reality, a research chat with a live per-ticker canvas, follow-up suggestions, and side-by-side comparison, and a read-only brokerage page (via SnapTrade) with live positions/orders and news for what you actually hold.
+- **Web app** — a dashboard with an editable watchlist, market screens (stocks/options/private companies), a per-ticker detail page with an interactive price chart, a multi-agent buy/hold/sell verdict page, a Buy Scan that runs that same verdict engine over today's market movers to surface new ideas, a Themes tab showing each curated theme's shared, periodically-refreshed model allocation sized to whatever amount you type in — with an LLM-scored, SEC-filings-derived ticker universe as an alternative to a hand-picked list, and an opt-in "Update theme" flow when a refresh finds a better one, a Track Record page scoring past AI verdicts against reality, a research chat with a live per-ticker canvas, follow-up suggestions, and side-by-side comparison, and a read-only brokerage page (via SnapTrade) with live positions/orders and news for what you actually hold.
 - **Backend API** — FastAPI + Server-Sent Events, streaming quotes, sentiment, and agent tool calls live to the frontend.
 
 ## Tech stack
@@ -208,17 +208,35 @@ already-logged verdict for the day instead of re-running the full pipeline
 if you scan again.
 
 **Themes (`/themes`)** — pick a curated investment theme (AI & Machine
-Learning, Semiconductors, Cybersecurity, Clean Energy & EVs, and more),
-enter a dollar amount, and get a data-ranked allocation across that theme's
-live ticker universe — no LLM in the request path, so it resolves in
-seconds. Each theme's tickers come from either a live yfinance industry
-screen (for themes that map cleanly to one industry) or a curated seed list
-(for themes spanning several), and every ticker is filtered to one with a
-live, fetchable price before it's included. Weighting is a 3-month
-momentum + market-cap composite, computed and clamped in Python rather
-than trusted from an LLM. Every build is saved; past portfolios group by
-theme in a collapsible history list, and clicking any past run re-renders
-it exactly like a fresh build — full allocation table, weights, and all.
+Learning, Semiconductors, Cybersecurity, Clean Energy & EVs, and more) and
+type a dollar amount to see it sized. Each theme has one shared, model
+allocation that every visitor sees — the same tickers and weights for
+everyone, refreshed on a schedule rather than rebuilt per click, so typing
+a different amount just rescales `dollar_amount`/`shares` client-side
+instead of re-running anything. Weighting is a 3-month momentum +
+market-cap composite, computed and clamped in Python rather than trusted
+from an LLM, so the live page itself makes no LLM calls at all.
+
+A theme's ticker universe comes from one of three sources: a live
+yfinance industry screen (for themes that map cleanly to one industry), a
+curated seed list (for themes spanning several), or — for AI & Machine
+Learning so far — SEC EDGAR full-text search matched against theme
+keywords, with an LLM scoring each matched filer's actual relevance (0–1,
+with a one-line rationale) rather than trusting a keyword hit alone; every
+scoring call is logged with its real per-call cost (`llm_call_log`,
+`call_site="theme_filings_scorer"`) so a refresh's total spend is known,
+not estimated (~$0.10–0.25 per theme per run, depending on how many
+candidates clear the market-cap floor). Every ticker is filtered to one
+with a live, fetchable price before it's included.
+
+Refreshing a theme (`uv run python -m agents.theme_builder <theme_key>`)
+never overwrites what's live — it writes a pending *candidate* instead,
+and the Themes tab surfaces it as an "updated version available" banner
+with an explicit diff (tickers added/dropped, weight changes) plus a
+selection-quality delta, letting you click "Update theme" to promote it.
+Promoting re-stamps each ticker's buy price at that moment, so a theme's
+shared "since buy" return always tracks from when a version actually went
+live, not from whenever the ranking job happened to run.
 
 **Research Chat (`/chat`)** — open-ended Q&A about any stock, backed by a
 tool-using agent (price, market cap, P/E, day change, history, news,

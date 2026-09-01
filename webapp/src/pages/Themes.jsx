@@ -1,70 +1,175 @@
-import { useEffect, useRef, useState } from 'react'
-import { getJSON, streamSSE } from '../api/client'
+import { useEffect, useState } from 'react'
+import { getJSON, postJSON } from '../api/client'
 import '../components/ToolCallPill.css'
 import './StockTeam.css'
 import './Scan.css'
 import './Themes.css'
 
 const RISK_LABEL = { lower: 'Lower risk', moderate: 'Moderate risk', higher: 'Higher risk' }
-const METHOD_LABEL = { formula: 'Formula', ai_team: 'AI Team' }
 
 function RiskBadge({ level }) {
   if (!level) return null
   return <span className={`risk-badge risk-badge--${level}`}>{RISK_LABEL[level] ?? level}</span>
 }
 
-function MethodBadge({ method }) {
-  if (!method) return null
-  return <span className={`method-badge method-badge--${method}`}>{METHOD_LABEL[method] ?? method}</span>
-}
-
 function ThemeCard({ theme, selected, onSelect }) {
   return (
     <button
       type="button"
-      className={`card themes__card${selected ? ' themes__card--selected' : ''}`}
+      className={`card themes__card themes__card--${theme.risk_level}${selected ? ' themes__card--selected' : ''}`}
       onClick={() => onSelect(theme.key)}
     >
-      <div className="themes__card-header">
-        <h3>{theme.name}</h3>
-        <RiskBadge level={theme.risk_level} />
-      </div>
+      <h3>{theme.name}</h3>
       <p>{theme.description}</p>
+      <RiskBadge level={theme.risk_level} />
     </button>
   )
 }
 
-function AllocationTable({ allocation }) {
-  if (!allocation.picks.length) {
-    return <p className="scan__empty">{allocation.summary}</p>
+function PriceChangeCell({ pick }) {
+  if (pick.price_at_buy == null) {
+    return <span className="themes__price-detail">—</span>
   }
+  const direction = pick.change_percent > 0 ? 'up' : pick.change_percent < 0 ? 'down' : 'flat'
+  return (
+    <div className="themes__price-cell">
+      {pick.current_price != null ? (
+        <span className={`themes__price-change themes__price-change--${direction}`}>
+          {pick.change_percent > 0 ? '+' : ''}
+          {pick.change_percent.toFixed(2)}%
+        </span>
+      ) : (
+        <span className="themes__price-detail">—</span>
+      )}
+      <span className="themes__price-detail">
+        ${pick.price_at_buy.toFixed(2)}
+        {pick.current_price != null ? ` → $${pick.current_price.toFixed(2)}` : ''}
+      </span>
+    </div>
+  )
+}
+
+/** Dollar-weighted total return across all picks with a known price_at_buy
+ * and current_price - picks missing either are excluded from both totals
+ * so they don't drag it toward zero. */
+function totalSinceBuy(picks) {
+  let invested = 0
+  let current = 0
+  for (const pick of picks) {
+    if (pick.price_at_buy == null || pick.current_price == null) continue
+    invested += pick.dollar_amount
+    current += pick.dollar_amount * (pick.current_price / pick.price_at_buy)
+  }
+  if (invested === 0) return null
+  return { invested, current, changePercent: ((current - invested) / invested) * 100 }
+}
+
+function TotalSinceBuyBanner({ picks }) {
+  const totals = totalSinceBuy(picks)
+  if (!totals) return null
+  const { invested, current, changePercent } = totals
+  const direction = changePercent > 0 ? 'up' : changePercent < 0 ? 'down' : 'flat'
+  return (
+    <div className={`themes__total-banner themes__total-banner--${direction}`}>
+      <span className="themes__total-label">Since buy</span>
+      <span className="themes__total-change">
+        {changePercent > 0 ? '+' : ''}
+        {changePercent.toFixed(2)}%
+      </span>
+      <span className="themes__total-detail">
+        ${invested.toFixed(2)} → ${current.toFixed(2)}
+      </span>
+    </div>
+  )
+}
+
+function FilingsRelevance({ relevance }) {
+  if (!relevance) return null
+  return (
+    <p className="themes__filings-relevance" title={relevance.rationale}>
+      <span className="themes__filings-relevance-label">
+        Why it's in this theme ({Math.round(relevance.relevance_score * 100)}% relevance):
+      </span>{' '}
+      {relevance.rationale}
+    </p>
+  )
+}
+
+/** weight_percent/price_at_buy never change with the amount typed in - only
+ * dollar_amount/shares scale, so this is a pure client-side derivation, not
+ * a fetch, every time `amount` changes. */
+function applyAmount(picks, amount) {
+  return picks.map((pick) => {
+    const dollar_amount = amount * (pick.weight_percent / 100)
+    const priceForShares = pick.current_price ?? pick.price_at_buy
+    return { ...pick, dollar_amount, shares: priceForShares ? dollar_amount / priceForShares : 0 }
+  })
+}
+
+function ThemeMeta({ suggestion }) {
+  const stamp = suggestion.promoted_at ?? suggestion.generated_at
+  return (
+    <div className="themes__meta">
+      <p className="themes__summary">{suggestion.summary}</p>
+      <p className="themes__generated-label">
+        Live since {new Date(stamp).toLocaleString()}
+        {suggestion.candidate && ' · a newer version is pending above'}
+      </p>
+    </div>
+  )
+}
+
+function AllocationTable({ suggestion, amount, filingsRelevance }) {
+  const picks = applyAmount(suggestion.picks, amount)
+  // Relative to the largest pick in *this* basket, not a literal 0-100%
+  // scale - every theme is capped at _MAX_WEIGHT_PERCENT=35 server-side
+  // (agents/theme_builder.py), so a flat 0-100% scale renders every bar
+  // as a near-invisible sliver.
+  const maxWeight = Math.max(...picks.map((p) => p.weight_percent))
   return (
     <>
-      <p className="themes__summary">{allocation.summary}</p>
+      <ThemeMeta suggestion={suggestion} />
+      <TotalSinceBuyBanner picks={picks} />
       <div className="card scan__table-card">
-        <table className="scan__table">
+        <table className="scan__table themes__table">
           <thead>
             <tr>
               <th>Ticker</th>
               <th>Weight</th>
+              <th>Since buy</th>
               <th>Amount</th>
-              <th>Shares</th>
-              <th>Why</th>
             </tr>
           </thead>
           <tbody>
-            {allocation.picks.map((pick) => (
+            {picks.map((pick) => (
               <tr key={pick.ticker}>
-                <td>{pick.ticker}</td>
-                <td className="num themes__weight-cell">
-                  <span className="themes__weight-bar">
-                    <span className="themes__weight-bar-fill" style={{ width: `${pick.weight_percent}%` }} />
-                  </span>
-                  {pick.weight_percent.toFixed(1)}%
+                <td>
+                  <div className="themes__ticker-cell">
+                    <span className="themes__ticker">{pick.ticker}</span>
+                    <span className="themes__rationale">{pick.rationale}</span>
+                    <FilingsRelevance relevance={filingsRelevance?.[pick.ticker]} />
+                  </div>
                 </td>
-                <td className="num">${pick.dollar_amount.toFixed(2)}</td>
-                <td className="num">{pick.shares.toFixed(4)}</td>
-                <td className="themes__rationale">{pick.rationale}</td>
+                <td className="num">
+                  <div className="themes__weight-cell">
+                    <span className="themes__weight-bar">
+                      <span
+                        className="themes__weight-bar-fill"
+                        style={{ width: `${(pick.weight_percent / maxWeight) * 100}%` }}
+                      />
+                    </span>
+                    {pick.weight_percent.toFixed(1)}%
+                  </div>
+                </td>
+                <td className="num">
+                  <PriceChangeCell pick={pick} />
+                </td>
+                <td className="num">
+                  <div className="themes__amount-cell">
+                    <span>${pick.dollar_amount.toFixed(2)}</span>
+                    <span className="themes__shares">{pick.shares.toFixed(4)} sh</span>
+                  </div>
+                </td>
               </tr>
             ))}
           </tbody>
@@ -78,97 +183,107 @@ function AllocationTable({ allocation }) {
   )
 }
 
-/** Groups history entries (already newest-first from the API) by theme -
- * each group's own entries stay newest-first, and groups are ordered by
- * their most recent run, since the first occurrence of a theme_key in a
- * newest-first list is that theme's most recent run. */
-function groupHistoryByTheme(history) {
-  const groups = new Map()
-  for (const entry of history) {
-    if (!groups.has(entry.theme_key)) groups.set(entry.theme_key, [])
-    groups.get(entry.theme_key).push(entry)
-  }
-  return Array.from(groups.entries()).map(([themeKey, entries]) => ({ themeKey, entries }))
+function CandidateBanner({ candidate, onUpdate, updating }) {
+  if (!candidate) return null
+  const { added, removed, reweighted, quality_delta } = candidate
+  const hasChanges = added.length || removed.length || reweighted.length
+  if (!hasChanges) return null
+  return (
+    <div className="card themes__candidate-banner">
+      <div className="themes__candidate-header">
+        <strong>An updated version of this theme is available</strong>
+        <button type="button" className="scan__run" onClick={onUpdate} disabled={updating}>
+          {updating ? 'Updating…' : 'Update theme'}
+        </button>
+      </div>
+      <p className="themes__generated-label">Generated {new Date(candidate.generated_at).toLocaleString()}</p>
+      <p className="themes__summary">{candidate.summary}</p>
+      {quality_delta != null && (
+        <p className="themes__candidate-quality">
+          Selection quality {quality_delta > 0 ? 'improved' : 'changed'} by {quality_delta > 0 ? '+' : ''}
+          {(quality_delta * 100).toFixed(1)} points (a proxy for how central the theme is to each pick's business,
+          not a performance guarantee).
+        </p>
+      )}
+      <div className="themes__candidate-diff">
+        {added.length > 0 && (
+          <div className="themes__candidate-diff-group">
+            <span className="themes__candidate-diff-group-label">Adding</span>
+            <ul className="themes__candidate-diff-chips">
+              {added.map((ticker) => (
+                <li key={`add-${ticker}`} className="themes__candidate-diff-add">
+                  {ticker}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+        {removed.length > 0 && (
+          <div className="themes__candidate-diff-group">
+            <span className="themes__candidate-diff-group-label">Dropping</span>
+            <ul className="themes__candidate-diff-chips">
+              {removed.map((ticker) => (
+                <li key={`rm-${ticker}`} className="themes__candidate-diff-remove">
+                  {ticker}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+        {reweighted.length > 0 && (
+          <div className="themes__candidate-diff-group">
+            <span className="themes__candidate-diff-group-label">Reweighting</span>
+            <ul className="themes__candidate-diff-chips">
+              {reweighted.map((r) => (
+                <li key={`rw-${r.ticker}`} className="themes__candidate-diff-reweight">
+                  {r.ticker} {r.from.toFixed(1)}%→{r.to.toFixed(1)}%
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </div>
+    </div>
+  )
 }
 
 export default function Themes() {
   const [themes, setThemes] = useState([])
   const [selectedKey, setSelectedKey] = useState(null)
   const [amount, setAmount] = useState('5000')
-  const [candidates, setCandidates] = useState(null)
-  const [formulaAllocation, setFormulaAllocation] = useState(null)
+  const [suggestion, setSuggestion] = useState(null)
+  const [filingsRelevance, setFilingsRelevance] = useState(null)
+  const [notReady, setNotReady] = useState(false)
   const [error, setError] = useState(null)
-  const [running, setRunning] = useState(false)
-  const [history, setHistory] = useState([])
-  const [expandedThemes, setExpandedThemes] = useState(() => new Set())
-  const controllerRef = useRef(null)
-  const buildRef = useRef(null)
+  const [updating, setUpdating] = useState(false)
 
   useEffect(() => {
     getJSON('/themes').then(setThemes).catch(() => {})
-    getJSON('/themes/history').then(setHistory).catch(() => {})
   }, [])
 
   function selectTheme(key) {
     setSelectedKey(key)
-    setCandidates(null)
-    setFormulaAllocation(null)
+    setSuggestion(null)
+    setNotReady(false)
     setError(null)
-    controllerRef.current?.abort()
+    getJSON(`/themes/${key}/suggestion`)
+      .then(setSuggestion)
+      .catch((e) => (e.status === 404 ? setNotReady(true) : setError(e.message)))
+    getJSON(`/themes/${key}/filings-relevance`).then(setFilingsRelevance).catch(() => setFilingsRelevance(null))
   }
 
-  function runBuild() {
-    const parsedAmount = Number(amount)
-    if (!selectedKey || !parsedAmount || parsedAmount <= 0) return
-
-    setCandidates(null)
-    setFormulaAllocation(null)
-    setError(null)
-    setRunning(true)
-    controllerRef.current?.abort()
-    const controller = new AbortController()
-    controllerRef.current = controller
-
-    streamSSE(`/themes/${selectedKey}/build?amount=${parsedAmount}`, {
-      signal: controller.signal,
-      onEvent: (eventName, data) => {
-        if (eventName === 'candidates') {
-          setCandidates(data.tickers)
-        } else if (eventName === 'formula_allocation') {
-          setFormulaAllocation(data)
-          getJSON('/themes/history').then(setHistory).catch(() => {})
-        } else if (eventName === 'error') {
-          setError(data.detail)
-        }
-      },
-    })
-      .catch((e) => {
-        if (e.name !== 'AbortError') setError(e.message)
-      })
-      .finally(() => setRunning(false))
-  }
-
-  function viewPastAllocation(entry) {
-    controllerRef.current?.abort()
-    setSelectedKey(entry.theme_key)
-    setAmount(String(entry.amount))
-    setCandidates(null)
-    setError(null)
-    setFormulaAllocation(entry)
-    buildRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-  }
-
-  function toggleThemeHistory(themeKey) {
-    setExpandedThemes((prev) => {
-      const next = new Set(prev)
-      if (next.has(themeKey)) next.delete(themeKey)
-      else next.add(themeKey)
-      return next
-    })
+  function updateTheme() {
+    if (!selectedKey) return
+    setUpdating(true)
+    postJSON(`/themes/${selectedKey}/suggestion/promote`)
+      .then(() => getJSON(`/themes/${selectedKey}/suggestion`))
+      .then(setSuggestion)
+      .catch((e) => setError(e.message))
+      .finally(() => setUpdating(false))
   }
 
   const selectedTheme = themes.find((t) => t.key === selectedKey)
-  const historyGroups = groupHistoryByTheme(history)
+  const parsedAmount = Number(amount) || 0
 
   return (
     <div className="scan themes">
@@ -176,8 +291,8 @@ export default function Themes() {
         <div>
           <h2>Themes</h2>
           <p className="scan__subtitle">
-            Pick a theme, tell us how much you want to invest, and we'll rank its live ticker universe by
-            momentum and market cap to size a basket - no AI vetting, just data, so it's instant.
+            Pick a theme to see its suggested allocation - the same ranked basket every visitor sees, refreshed on a
+            schedule rather than rebuilt per visit. Type an amount to see it sized in dollars.
           </p>
         </div>
       </div>
@@ -191,7 +306,7 @@ export default function Themes() {
       </section>
 
       {selectedTheme && (
-        <div ref={buildRef} className="card themes__build">
+        <div className="card themes__build">
           <div className="themes__build-row">
             <label className="themes__amount-label">
               Amount to invest
@@ -206,67 +321,20 @@ export default function Themes() {
                 />
               </span>
             </label>
-            <button type="button" className="scan__run" onClick={runBuild} disabled={running}>
-              {running ? 'Building…' : formulaAllocation ? 'Rebuild' : `Build ${selectedTheme.name} portfolio`}
-            </button>
           </div>
 
-          {candidates && !formulaAllocation && (
-            <span className="scan__count">Screened {candidates.length} tickers…</span>
+          {notReady && (
+            <p className="scan__empty">
+              A suggested allocation for {selectedTheme.name} hasn't been generated yet - check back soon.
+            </p>
           )}
 
-          {formulaAllocation && <AllocationTable allocation={formulaAllocation} />}
-        </div>
-      )}
-
-      {historyGroups.length > 0 && (
-        <div className="themes__history">
-          <h3>Past portfolios</h3>
-          {historyGroups.map(({ themeKey, entries }) => {
-            const theme = themes.find((t) => t.key === themeKey)
-            const expanded = expandedThemes.has(themeKey)
-            return (
-              <div key={themeKey} className="card themes__history-group">
-                <button
-                  type="button"
-                  className="themes__history-group-header"
-                  aria-expanded={expanded}
-                  onClick={() => toggleThemeHistory(themeKey)}
-                >
-                  <span className={`themes__history-chevron${expanded ? ' themes__history-chevron--open' : ''}`}>
-                    &#9656;
-                  </span>
-                  <strong>{theme?.name ?? themeKey}</strong>
-                  <span className="scan__count">
-                    {entries.length} run{entries.length === 1 ? '' : 's'} &middot; last{' '}
-                    {new Date(entries[0].created_at).toLocaleDateString()}
-                  </span>
-                </button>
-
-                {expanded && (
-                  <div className="themes__history-entries">
-                    {entries.map((entry, i) => (
-                      <button
-                        key={i}
-                        type="button"
-                        className="themes__history-card"
-                        onClick={() => viewPastAllocation(entry)}
-                      >
-                        <div className="themes__history-header">
-                          <MethodBadge method={entry.method} />
-                          <span className="scan__count">
-                            ${entry.amount.toLocaleString()} &middot; {new Date(entry.created_at).toLocaleDateString()}
-                          </span>
-                        </div>
-                        <p className="themes__summary">{entry.summary}</p>
-                        <p className="themes__history-tickers">{entry.picks.map((p) => p.ticker).join(', ')}</p>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )
-          })}
+          {suggestion && (
+            <>
+              <CandidateBanner candidate={suggestion.candidate} onUpdate={updateTheme} updating={updating} />
+              <AllocationTable suggestion={suggestion} amount={parsedAmount} filingsRelevance={filingsRelevance} />
+            </>
+          )}
         </div>
       )}
     </div>

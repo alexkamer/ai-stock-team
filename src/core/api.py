@@ -27,14 +27,14 @@ from sqlalchemy.orm import Session as DbSession
 from agents.chat import send_message
 from agents.main import get_article_summary, get_sentiment_streaming
 from agents.stock_team import get_team_analysis, run_team_scan
-from agents.theme_builder import build_formula_allocation, get_theme_history
+from agents.theme_builder import get_theme_suggestion, promote_theme_suggestion
 from core.auth import get_current_user
 from core.db import get_db
 from core.models_db import TeamVerdictRecord, User
 from core.routers import auth as auth_router
 from core.routers import brokerage as brokerage_router
 from core.sse import Final, format_sse, run_agent_streaming
-from core.themes import THEME_CATALOG, get_theme_universe
+from core.themes import THEME_CATALOG, get_filings_relevance
 from core.track_record import aggregate_stats, log_verdict, score_records, specialist_stats
 from core.tools import (
     DEFAULT_WATCHLIST,
@@ -376,33 +376,40 @@ def list_themes() -> list[dict]:
     return [{k: v for k, v in theme.items() if k in _THEME_PUBLIC_FIELDS} for theme in THEME_CATALOG]
 
 
-@app.get("/themes/history")
-def get_theme_portfolio_history(user: User = Depends(get_current_user), db: DbSession = Depends(get_db)) -> list[dict]:
-    return get_theme_history(db, user.id)
+@app.get("/themes/{theme_key}/filings-relevance")
+def get_theme_filings_relevance(theme_key: str) -> dict[str, dict]:
+    """Ticker -> {relevance_score, rationale} for a filings-sourced
+    theme's universe (see core/themes.py's get_filings_relevance) - static
+    per theme, no auth needed, same as /themes. Empty for a seed/industry
+    theme or one the scorer hasn't run for."""
+    return get_filings_relevance(theme_key)
 
 
-@app.get("/themes/{theme_key}/build")
-async def build_theme_portfolio(
-    theme_key: str, amount: float, user: User = Depends(get_current_user), db: DbSession = Depends(get_db)
-) -> StreamingResponse:
-    """Formula-only for now (see agents/theme_builder.py): live market data,
-    no LLM, resolves in seconds. The full Stock Team vetting + AI allocator
-    pass (build_ai_allocation) is disabled here to keep this endpoint fast -
-    the function still exists and is tested, so it's a one-line re-add."""
+@app.get("/themes/{theme_key}/suggestion")
+def get_theme_suggestion_route(theme_key: str, db: DbSession = Depends(get_db)) -> dict:
+    """The shared model portfolio the Themes tab now renders directly -
+    same tickers/weights for every visitor, refreshed on a schedule (see
+    agents/theme_builder.py's refresh_theme_suggestion), not per request.
+    404 when the theme just hasn't been refreshed yet - an expected,
+    common state (most of THEME_CATALOG, until the cron catches up), not
+    a real error; the frontend renders a placeholder for it."""
+    suggestion = get_theme_suggestion(theme_key, db)
+    if suggestion is None:
+        raise HTTPException(status_code=404, detail="No suggestion generated yet for this theme")
+    return suggestion
+
+
+@app.post("/themes/{theme_key}/suggestion/promote")
+def promote_theme_suggestion_route(
+    theme_key: str, user: User = Depends(get_current_user), db: DbSession = Depends(get_db)
+) -> dict:
+    """Adopts the pending candidate suggestion as live - the user-facing
+    "Update theme" action. Auth-gated (unlike the read side) since it
+    mutates shared state every visitor sees, not just the caller's own."""
     try:
-        tickers = get_theme_universe(theme_key)
+        return promote_theme_suggestion(theme_key, db)
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e)) from e
-
-    async def event_source():
-        yield format_sse("candidates", json.dumps({"tickers": tickers}))
-        try:
-            formula_allocation = await asyncio.to_thread(build_formula_allocation, theme_key, amount, tickers, db, user.id)
-            yield format_sse("formula_allocation", json.dumps(formula_allocation))
-        except ValueError as e:
-            yield format_sse("error", json.dumps({"detail": str(e)}))
-
-    return StreamingResponse(event_source(), media_type="text/event-stream")
 
 
 @app.get("/tickers/{ticker}/history")

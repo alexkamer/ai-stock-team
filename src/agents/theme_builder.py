@@ -10,8 +10,17 @@ two ways:
 
 Both share _normalize_weights (defensive clamp/renormalize) and compute
 dollar amounts/share counts in Python, never trusted from the LLM.
+
+A third thing lives here too: refresh_theme_suggestion/promote_theme_
+suggestion/get_theme_suggestion, the shared "model portfolio" per theme
+that replaced per-click building on the Themes tab - one ranked
+allocation per theme_key that every user sees, refreshed on a schedule
+(this file's CLI entry point) rather than per request. See
+core/models_db.py's ThemeSuggestion docstring for the live/candidate
+versioning.
 """
 
+import argparse
 import math
 from datetime import datetime, timezone
 
@@ -19,8 +28,8 @@ from sqlalchemy.orm import Session as DbSession
 
 from core.config import load_agent
 from core.models import ThemeAllocation
-from core.models_db import ThemePortfolio, ThemePortfolioPick
-from core.themes import get_theme
+from core.models_db import ThemePortfolio, ThemePortfolioPick, ThemeSuggestion, ThemeSuggestionPick, _now
+from core.themes import get_filings_relevance, get_theme, get_theme_universe
 from core.tools import get_market_cap, get_price_performance, get_stock_price, parallel_map
 
 _AGENT_RETRIES = 3
@@ -103,22 +112,27 @@ def _persist(theme_key: str, amount: float, summary: str, picks: list[dict], met
         db.add(ThemePortfolioPick(theme_portfolio_id=record.id, **pick))
     db.commit()
 
+    # current_price == price_at_buy right after a build - no extra fetch
+    # needed, unlike get_theme_history which is enriching picks that were
+    # bought at some point in the past.
+    enriched_picks = [{**pick, "current_price": pick["price_at_buy"], "change_percent": 0.0} for pick in picks]
+
     return {
         "theme_key": theme_key,
         "amount": amount,
         "summary": summary,
-        "picks": picks,
+        "picks": enriched_picks,
         "created_at": record.created_at.isoformat(),
     }
 
 
-def build_formula_allocation(theme_key: str, amount: float, tickers: list[str], db: DbSession, user_id: int) -> dict:
-    """No LLM call anywhere in this function - weights come from a plain
-    momentum + market-cap composite score over live data, so this resolves
-    in the time it takes to fetch a handful of yfinance fields, not the
-    minutes a full multi-agent scan takes (see build_ai_allocation)."""
-    if not tickers:
-        return _empty_result(theme_key, amount, "No tickers in this theme's universe today - try again another day.")
+def _rank_tickers(tickers: list[str]) -> list[dict]:
+    """The formula's core: 3-month momentum + market-cap composite score
+    over live data, normalized to weight_percent - no LLM, no amount, no
+    persistence, just tickers in and ranked {ticker, weight_percent,
+    rationale, price} out. Shared by build_formula_allocation (a per-
+    amount, per-user build) and refresh_theme_suggestion (the shared,
+    amount-agnostic model portfolio) so the ranking logic has one home."""
 
     def _fetch(ticker: str) -> dict | None:
         try:
@@ -134,7 +148,7 @@ def build_formula_allocation(theme_key: str, amount: float, tickers: list[str], 
 
     data = [d for d in parallel_map(_fetch, tickers) if d is not None]
     if not data:
-        return _empty_result(theme_key, amount, "Couldn't fetch live data for this theme's tickers - try again later.")
+        return []
 
     momentum_norm = _min_max_normalize([d["momentum"] for d in data])
     size_norm = _min_max_normalize([math.log10(d["market_cap"]) for d in data])
@@ -149,17 +163,36 @@ def build_formula_allocation(theme_key: str, amount: float, tickers: list[str], 
     normalized = _normalize_weights(raw_picks)
     prices = {d["ticker"]: d["price"] for d in data}
 
+    return [
+        {"ticker": ticker, "weight_percent": round(weight_percent, 2), "rationale": rationale, "price": prices[ticker]}
+        for ticker, weight_percent, rationale in normalized
+    ]
+
+
+def build_formula_allocation(theme_key: str, amount: float, tickers: list[str], db: DbSession, user_id: int) -> dict:
+    """No LLM call anywhere in this function - weights come from a plain
+    momentum + market-cap composite score over live data, so this resolves
+    in the time it takes to fetch a handful of yfinance fields, not the
+    minutes a full multi-agent scan takes (see build_ai_allocation)."""
+    if not tickers:
+        return _empty_result(theme_key, amount, "No tickers in this theme's universe today - try again another day.")
+
+    ranked = _rank_tickers(tickers)
+    if not ranked:
+        return _empty_result(theme_key, amount, "Couldn't fetch live data for this theme's tickers - try again later.")
+
     picks = []
-    for ticker, weight_percent, rationale in normalized:
-        dollar_amount = amount * weight_percent / 100.0
+    for r in ranked:
+        dollar_amount = amount * r["weight_percent"] / 100.0
         picks.append(
             {
-                "ticker": ticker,
+                "ticker": r["ticker"],
                 "verdict": None,
-                "weight_percent": round(weight_percent, 2),
+                "weight_percent": r["weight_percent"],
                 "dollar_amount": round(dollar_amount, 2),
-                "shares": round(dollar_amount / prices[ticker], 4),
-                "rationale": rationale,
+                "shares": round(dollar_amount / r["price"], 4),
+                "rationale": r["rationale"],
+                "price_at_buy": r["price"],
             }
         )
 
@@ -208,10 +241,27 @@ async def build_ai_allocation(theme_key: str, amount: float, scan_results: list[
                 "dollar_amount": round(dollar_amount, 2),
                 "shares": round(dollar_amount / prices[ticker], 4),
                 "rationale": rationale,
+                "price_at_buy": prices[ticker],
             }
         )
 
     return _persist(theme_key, amount, result.output.summary, picks, "ai_team", db, user_id)
+
+
+def _fetch_current_prices(tickers: list[str]) -> dict[str, float | None]:
+    """One live price fetch per distinct ticker, however many past
+    portfolios/picks reference it - mirrors the dedup-by-symbol idea in
+    track_record.score_records, just for a live quote instead of history."""
+    if not tickers:
+        return {}
+
+    def _fetch(ticker: str) -> tuple[str, float | None]:
+        try:
+            return ticker, get_stock_price(ticker)
+        except ValueError:
+            return ticker, None
+
+    return dict(parallel_map(_fetch, tickers))
 
 
 def get_theme_history(db: DbSession, user_id: int) -> list[dict]:
@@ -221,6 +271,29 @@ def get_theme_history(db: DbSession, user_id: int) -> list[dict]:
         .order_by(ThemePortfolio.created_at.desc())
         .all()
     )
+
+    all_picks = [pick for p in portfolios for pick in p.picks]
+    current_prices = _fetch_current_prices(sorted({pick.ticker for pick in all_picks if pick.price_at_buy}))
+
+    def _serialize_pick(pick: ThemePortfolioPick) -> dict:
+        current_price = current_prices.get(pick.ticker)
+        change_percent = (
+            round((current_price - pick.price_at_buy) / pick.price_at_buy * 100, 2)
+            if current_price and pick.price_at_buy
+            else None
+        )
+        return {
+            "ticker": pick.ticker,
+            "verdict": pick.verdict,
+            "weight_percent": pick.weight_percent,
+            "dollar_amount": pick.dollar_amount,
+            "shares": pick.shares,
+            "rationale": pick.rationale,
+            "price_at_buy": pick.price_at_buy,
+            "current_price": current_price,
+            "change_percent": change_percent,
+        }
+
     return [
         {
             "theme_key": p.theme_key,
@@ -228,17 +301,184 @@ def get_theme_history(db: DbSession, user_id: int) -> list[dict]:
             "summary": p.summary,
             "method": p.method,
             "created_at": p.created_at.isoformat(),
-            "picks": [
-                {
-                    "ticker": pick.ticker,
-                    "verdict": pick.verdict,
-                    "weight_percent": pick.weight_percent,
-                    "dollar_amount": pick.dollar_amount,
-                    "shares": pick.shares,
-                    "rationale": pick.rationale,
-                }
-                for pick in p.picks
-            ],
+            "picks": [_serialize_pick(pick) for pick in p.picks],
         }
         for p in portfolios
     ]
+
+
+def _get_suggestion(db: DbSession, theme_key: str, status: str) -> ThemeSuggestion | None:
+    return (
+        db.query(ThemeSuggestion)
+        .filter(ThemeSuggestion.theme_key == theme_key, ThemeSuggestion.status == status)
+        .first()
+    )
+
+
+def refresh_theme_suggestion(theme_key: str, db: DbSession) -> dict:
+    """Re-ranks a theme's universe and writes the result as a 'candidate'
+    row (or, if the theme has no 'live' row yet, directly as 'live' - a
+    first run has nothing to preserve). Meant to run on a schedule (see
+    the CLI at the bottom of this file), not per user request - the
+    Themes tab only ever reads whatever refresh_theme_suggestion last
+    wrote, via get_theme_suggestion, and only promote_theme_suggestion
+    ever turns a candidate into the live version users see."""
+    tickers = get_theme_universe(theme_key)
+    ranked = _rank_tickers(tickers)
+    if not ranked:
+        raise ValueError(f"Couldn't rank any tickers for theme {theme_key!r} - try again later")
+
+    relevance = get_filings_relevance(theme_key)
+    scores = [relevance[r["ticker"]]["relevance_score"] for r in ranked if r["ticker"] in relevance]
+    quality_score = round(sum(scores) / len(scores), 3) if scores else None
+
+    is_first_run = _get_suggestion(db, theme_key, "live") is None
+    status = "live" if is_first_run else "candidate"
+    summary = (
+        f"Ranked by 3-month price momentum and market cap alone (no AI vetting) - "
+        f"{len(ranked)} of this theme's {len(tickers)} tickers had usable data."
+    )
+
+    db.query(ThemeSuggestion).filter(ThemeSuggestion.theme_key == theme_key, ThemeSuggestion.status == status).delete()
+    suggestion = ThemeSuggestion(
+        theme_key=theme_key,
+        status=status,
+        summary=summary,
+        quality_score=quality_score,
+        promoted_at=_now() if is_first_run else None,
+    )
+    db.add(suggestion)
+    db.flush()
+    for r in ranked:
+        db.add(
+            ThemeSuggestionPick(
+                theme_suggestion_id=suggestion.id,
+                ticker=r["ticker"],
+                weight_percent=r["weight_percent"],
+                rationale=r["rationale"],
+                relevance_score=relevance.get(r["ticker"], {}).get("relevance_score"),
+                price_at_buy=r["price"],
+            )
+        )
+    db.commit()
+
+    return {"theme_key": theme_key, "status": status, "picks": len(ranked), "quality_score": quality_score}
+
+
+def promote_theme_suggestion(theme_key: str, db: DbSession) -> dict:
+    """Adopts the current candidate as live: re-stamps price_at_buy at
+    today's prices (not whatever price was live when the candidate was
+    generated, which could be stale by the time someone actually clicks
+    "Update theme"), so since-buy tracking starts fresh from the moment
+    of adoption, not from the cron run."""
+    candidate = _get_suggestion(db, theme_key, "candidate")
+    if candidate is None:
+        raise ValueError(f"No candidate suggestion to promote for theme {theme_key!r}")
+
+    tickers = [p.ticker for p in candidate.picks]
+    fresh_prices = _fetch_current_prices(tickers)
+
+    db.query(ThemeSuggestion).filter(ThemeSuggestion.theme_key == theme_key, ThemeSuggestion.status == "live").delete()
+    candidate.status = "live"
+    candidate.promoted_at = _now()
+    for pick in candidate.picks:
+        price = fresh_prices.get(pick.ticker)
+        if price is not None:
+            pick.price_at_buy = price
+    db.commit()
+
+    return {"theme_key": theme_key, "promoted_picks": len(candidate.picks)}
+
+
+def _diff_suggestions(live: ThemeSuggestion, candidate: ThemeSuggestion) -> dict:
+    live_by_ticker = {p.ticker: p.weight_percent for p in live.picks}
+    candidate_by_ticker = {p.ticker: p.weight_percent for p in candidate.picks}
+    added = sorted(set(candidate_by_ticker) - set(live_by_ticker))
+    removed = sorted(set(live_by_ticker) - set(candidate_by_ticker))
+    reweighted = [
+        {"ticker": t, "from": live_by_ticker[t], "to": candidate_by_ticker[t]}
+        for t in sorted(set(live_by_ticker) & set(candidate_by_ticker))
+        if abs(live_by_ticker[t] - candidate_by_ticker[t]) >= 1.0
+    ]
+    return {
+        "added": added,
+        "removed": removed,
+        "reweighted": reweighted,
+        "quality_delta": (
+            round(candidate.quality_score - live.quality_score, 3)
+            if candidate.quality_score is not None and live.quality_score is not None
+            else None
+        ),
+    }
+
+
+def get_theme_suggestion(theme_key: str, db: DbSession) -> dict | None:
+    """What the Themes tab actually reads: the live suggestion (with
+    current prices/since-buy computed in), plus a diff against the
+    pending candidate if a cron run has produced one. Returns None if
+    refresh_theme_suggestion has never run for this theme - the frontend
+    shows a placeholder for that case rather than falling back to a live
+    build, since there's deliberately no more per-request build path."""
+    live = _get_suggestion(db, theme_key, "live")
+    if live is None:
+        return None
+
+    current_prices = _fetch_current_prices(sorted({p.ticker for p in live.picks}))
+    picks = []
+    for p in live.picks:
+        current_price = current_prices.get(p.ticker)
+        change_percent = (
+            round((current_price - p.price_at_buy) / p.price_at_buy * 100, 2)
+            if current_price and p.price_at_buy
+            else None
+        )
+        picks.append(
+            {
+                "ticker": p.ticker,
+                "weight_percent": p.weight_percent,
+                "rationale": p.rationale,
+                "relevance_score": p.relevance_score,
+                "price_at_buy": p.price_at_buy,
+                "current_price": current_price,
+                "change_percent": change_percent,
+            }
+        )
+
+    candidate = _get_suggestion(db, theme_key, "candidate")
+    candidate_summary = None
+    if candidate is not None:
+        candidate_summary = {
+            "generated_at": candidate.generated_at.isoformat(),
+            "summary": candidate.summary,
+            "quality_score": candidate.quality_score,
+            **_diff_suggestions(live, candidate),
+        }
+
+    return {
+        "theme_key": theme_key,
+        "summary": live.summary,
+        "quality_score": live.quality_score,
+        "generated_at": live.generated_at.isoformat(),
+        "promoted_at": live.promoted_at.isoformat() if live.promoted_at else None,
+        "picks": picks,
+        "candidate": candidate_summary,
+    }
+
+
+def _main() -> None:
+    from core.db import SessionLocal
+
+    parser = argparse.ArgumentParser(description="Refresh a theme's shared model-portfolio suggestion")
+    parser.add_argument("theme_key")
+    args = parser.parse_args()
+
+    db = SessionLocal()
+    try:
+        result = refresh_theme_suggestion(args.theme_key, db)
+    finally:
+        db.close()
+    print(result)
+
+
+if __name__ == "__main__":
+    _main()

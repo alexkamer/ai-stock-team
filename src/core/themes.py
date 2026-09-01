@@ -10,12 +10,18 @@ from a live screen instead, so the universe reflects the real market
 (current constituents, current market caps) rather than a list I hand-
 picked from memory - which is exactly how CYBR (delisted after Palo Alto's
 acquisition of CyberArk) ended up stale in the first shipped version.
-Themes that genuinely span multiple industries (source="seed") keep a
-curated list, since there's no single yfinance industry to screen.
+Themes that genuinely span multiple industries either keep a curated
+list (source="seed") or, for the ones tried with agents/theme_filings_
+scorer.py, get their universe from an LLM's relevance scoring of live
+SEC EDGAR full-text search hits (source="filings") - `tickers` on a
+filings-sourced theme is kept as the fallback used before the scorer's
+ever been run for it, or if a run turned up nothing.
 """
 
 from time import monotonic
 
+from core.db import SessionLocal
+from core.models_db import ThemeFilingsPick
 from core.tools import get_stock_price, parallel_map, screen_by_industry
 
 THEME_CATALOG = [
@@ -24,7 +30,11 @@ THEME_CATALOG = [
         "name": "AI & Machine Learning",
         "description": "Companies building the chips, cloud infrastructure, and software powering the AI boom.",
         "risk_level": "higher",
-        "source": "seed",
+        "source": "filings",
+        "keywords": [
+            "artificial intelligence", "machine learning", "large language model",
+            "generative AI", "AI infrastructure", "GPU",
+        ],
         "tickers": [
             "NVDA", "MSFT", "GOOGL", "META", "AMZN", "AMD", "AVGO", "PLTR",
             "SNOW", "CRM", "ORCL", "SMCI", "ANET", "NOW",
@@ -123,6 +133,42 @@ def _is_valid_ticker(ticker: str) -> bool:
         return False
 
 
+def get_filings_relevance(theme_key: str) -> dict[str, dict]:
+    """Ticker -> {relevance_score, rationale} for a theme's most recent
+    "kept" filings-scorer picks (see agents/theme_filings_scorer.py) - the
+    "why is this ticker in the theme" the API exposes to the Themes tab,
+    as opposed to _get_filings_universe's plain ticker list used to build
+    the universe itself. Empty for a theme the scorer's never run, or one
+    that isn't filings-sourced at all."""
+    db = SessionLocal()
+    try:
+        rows = (
+            db.query(ThemeFilingsPick)
+            .filter(ThemeFilingsPick.theme_key == theme_key, ThemeFilingsPick.status == "kept")
+            .all()
+        )
+        return {row.ticker: {"relevance_score": row.relevance_score, "rationale": row.rationale} for row in rows}
+    finally:
+        db.close()
+
+
+def _get_filings_universe(theme_key: str) -> list[str]:
+    """Tickers from the most recent agents/theme_filings_scorer.py run for
+    this theme, ranked by relevance_score - empty if the scorer's never
+    been run for it, so the caller falls back to the theme's seed list."""
+    db = SessionLocal()
+    try:
+        rows = (
+            db.query(ThemeFilingsPick)
+            .filter(ThemeFilingsPick.theme_key == theme_key, ThemeFilingsPick.status == "kept")
+            .order_by(ThemeFilingsPick.relevance_score.desc())
+            .all()
+        )
+        return [row.ticker for row in rows]
+    finally:
+        db.close()
+
+
 def get_theme_universe(theme_key: str) -> list[str]:
     """This theme's actual ticker universe: a live industry screen or the
     static seed list (per theme["source"]), filtered to tickers with a
@@ -138,6 +184,8 @@ def get_theme_universe(theme_key: str) -> list[str]:
     theme = get_theme(theme_key)
     if theme["source"] == "industry":
         candidates = screen_by_industry(theme["industry"], min_market_cap=_MIN_MARKET_CAP, limit=_UNIVERSE_LIMIT)
+    elif theme["source"] == "filings":
+        candidates = _get_filings_universe(theme_key) or theme["tickers"]
     else:
         candidates = theme["tickers"]
 
