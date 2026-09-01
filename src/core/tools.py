@@ -900,7 +900,11 @@ def get_market_news(tickers: list[str], limit: int = 8) -> list[dict]:
     """
     seen_urls: set[str] = set()
     raw_articles = []
-    fetch = lambda t: yf.Ticker(t).get_news(count=NEWS_FETCH_COUNT)
+    def fetch(t: str) -> list:
+        try:
+            return with_yf_retries(lambda: yf.Ticker(t).get_news(count=NEWS_FETCH_COUNT))
+        except Exception:
+            return []
     for ticker, ticker_articles in zip(tickers, parallel_map(fetch, tickers)):
         for article in ticker_articles:
             content = article.get("content", {})
@@ -963,7 +967,7 @@ def get_market_news(tickers: list[str], limit: int = 8) -> list[dict]:
 def _try_day_change(ticker: str) -> float | None:
     try:
         return get_day_change(ticker)["percent"]
-    except ValueError:
+    except Exception:
         return None
 
 
@@ -1014,10 +1018,15 @@ def scrape_article(url: str) -> dict:
 
 def get_day_prices(ticker: str) -> list[float]:
     """Intraday closes for today, for a small per-row day chart. Best-effort -
-    a ticker with no intraday bars yet (e.g. pre-market) gets an empty list
-    rather than failing the whole feed it's part of.
+    a ticker with no intraday bars yet (e.g. pre-market), or a fetch that
+    fails outright, gets an empty list rather than failing the whole feed
+    it's part of (this runs inside parallel_map for every row of every
+    screen - one bad ticker shouldn't 500 the rest).
     """
-    history = with_yf_retries(lambda: yf.Ticker(ticker).history(period="1d", interval="5m"))
+    try:
+        history = with_yf_retries(lambda: yf.Ticker(ticker).history(period="1d", interval="5m"))
+    except Exception:
+        return []
     return [float(close) for close in history["Close"]] if not history.empty else []
 
 
@@ -1038,10 +1047,19 @@ def _screen_quotes(
     get filtered out below for missing symbol/price - without the padding,
     a page would silently return fewer than `limit` tickers instead of
     backfilling from later in the same page.
+
+    Returns `([], 0)` rather than raising if the screen itself fails (after
+    retries) - every caller (most-active/gainers/losers/top-performing/
+    top-etfs, get_similar_tickers, screen_by_industry) already treats an
+    empty result as "nothing matched," so this degrades the same way a
+    real empty screen would instead of 500ing the whole request.
     """
-    fetch_size = limit * 2
-    limit_kwarg = {"size": fetch_size} if isinstance(screener_query, EquityQuery) else {"count": fetch_size}
-    result = yf.screen(screener_query, offset=offset, **limit_kwarg, **screen_kwargs)
+    try:
+        fetch_size = limit * 2
+        limit_kwarg = {"size": fetch_size} if isinstance(screener_query, EquityQuery) else {"count": fetch_size}
+        result = with_yf_retries(lambda: yf.screen(screener_query, offset=offset, **limit_kwarg, **screen_kwargs))
+    except Exception:
+        return [], 0
     filtered = [
         quote
         for quote in result.get("quotes", [])
@@ -1094,14 +1112,28 @@ def get_trending_tickers(limit: int = 6, offset: int = 0) -> tuple[list[dict], i
         limit: Maximum number of tickers to return.
         offset: How many equities (post-filtering) to skip before `limit`.
     """
-    response = requests.get(
-        _TRENDING_URL, params={"count": 200}, headers={"User-Agent": "Mozilla/5.0"}, timeout=10
-    )
-    response.raise_for_status()
+
+    def _fetch_trending() -> requests.Response:
+        response = requests.get(
+            _TRENDING_URL, params={"count": 200}, headers={"User-Agent": "Mozilla/5.0"}, timeout=10
+        )
+        response.raise_for_status()
+        return response
+
+    try:
+        response = with_yf_retries(_fetch_trending)
+    except Exception:
+        return [], 0
     results = response.json().get("finance", {}).get("result", [])
     symbols = [q["symbol"] for q in (results[0]["quotes"] if results else []) if q.get("symbol")]
 
-    infos = parallel_map(_get_info, symbols)
+    def _safe_info(ticker: str) -> dict:
+        try:
+            return _get_info(ticker)
+        except Exception:
+            return {}
+
+    infos = parallel_map(_safe_info, symbols)
     equities = [
         (symbol, info)
         for symbol, info in zip(symbols, infos)
@@ -1301,21 +1333,31 @@ def _predefined_screen(scr_id: str, limit: int, fields: list[str]) -> list[dict]
     """Call Yahoo's predefined-screener endpoint directly for scrIds that
     yfinance's `yf.screen()` doesn't know about (options, private companies).
     Returns the raw `records` list, each value unwrapped from Yahoo's
-    `{"raw": ..., "fmt": ...}` shape down to its plain `raw` value.
-    """
-    response = requests.get(
-        _PREDEFINED_SCREENER_URL,
-        params={
-            "count": limit,
-            "scrIds": scr_id,
-            "start": 0,
-            "useRecordsResponse": "true",
-            "fields": ",".join(fields),
-        },
-        headers={"User-Agent": "Mozilla/5.0"},
-        timeout=10,
-    )
-    response.raise_for_status()
+    `{"raw": ..., "fmt": ...}` shape down to its plain `raw` value. Empty
+    (not raised) if the fetch fails after retries - same "degrade to no
+    results" contract as _screen_quotes, for the options/private-company
+    screens this feeds."""
+
+    def _fetch() -> requests.Response:
+        response = requests.get(
+            _PREDEFINED_SCREENER_URL,
+            params={
+                "count": limit,
+                "scrIds": scr_id,
+                "start": 0,
+                "useRecordsResponse": "true",
+                "fields": ",".join(fields),
+            },
+            headers={"User-Agent": "Mozilla/5.0"},
+            timeout=10,
+        )
+        response.raise_for_status()
+        return response
+
+    try:
+        response = with_yf_retries(_fetch)
+    except Exception:
+        return []
     results = response.json().get("finance", {}).get("result") or []
     records = results[0].get("records", []) if results else []
     return [
@@ -1450,7 +1492,10 @@ def get_highest_valuation_private_companies(limit: int = 6) -> list[dict]:
 
 
 def _five_year_change_percent(ticker: str) -> float | None:
-    history = with_yf_retries(lambda: yf.Ticker(ticker).history(period="5y", interval="1mo"))
+    try:
+        history = with_yf_retries(lambda: yf.Ticker(ticker).history(period="5y", interval="1mo"))
+    except Exception:
+        return None
     if history.empty or len(history) < 2:
         return None
     first, last = float(history["Close"].iloc[0]), float(history["Close"].iloc[-1])

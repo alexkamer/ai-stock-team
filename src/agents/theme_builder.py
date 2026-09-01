@@ -223,10 +223,20 @@ async def build_ai_allocation(theme_key: str, amount: float, scan_results: list[
     if not usable:
         return _empty_result(theme_key, amount, "No buy- or hold-rated picks came out of today's scan for this theme - try again another day.")
 
-    tickers = [r["ticker"] for r in usable]
-    prices = dict(zip(tickers, parallel_map(get_stock_price, tickers)))
+    def _safe_price(ticker: str) -> float | None:
+        try:
+            return get_stock_price(ticker)
+        except Exception:
+            return None
 
-    candidates = _select_candidates(usable, prices)
+    tickers = [r["ticker"] for r in usable]
+    prices = {t: p for t, p in zip(tickers, parallel_map(_safe_price, tickers)) if p is not None}
+
+    # _select_candidates picks from `usable` by verdict alone, so a
+    # buy-rated ticker whose price fetch just failed could still come back
+    # - drop it here rather than at the f-string below, where it'd be a
+    # KeyError instead of just one fewer candidate.
+    candidates = [c for c in _select_candidates(usable, prices) if c["ticker"] in prices]
     if not candidates:
         return _empty_result(theme_key, amount, "No buy- or hold-rated picks came out of today's scan for this theme - try again another day.")
 
