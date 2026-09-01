@@ -42,6 +42,7 @@ from core.tools import (
     get_sector,
     get_stock_price,
     parallel_map,
+    with_yf_retries,
 )
 
 _AGENT_RETRIES = 3
@@ -639,7 +640,7 @@ def _closes_from(ticker: str, start: date) -> pd.Series | None:
     e.g. a rate limit) just drops out of that day's weighted sum rather
     than raising and taking down the whole computation."""
     try:
-        history = yf.Ticker(ticker).history(start=start)
+        history = with_yf_retries(lambda: yf.Ticker(ticker).history(start=start))
     except Exception:
         return None
     if history.empty:
@@ -657,7 +658,7 @@ def _intraday_closes_from(ticker: str) -> pd.Series | None:
     this, a theme that's an hour old has exactly one daily data point and
     the chart has nothing to draw a line between."""
     try:
-        history = yf.Ticker(ticker).history(period="1d", interval="5m")
+        history = with_yf_retries(lambda: yf.Ticker(ticker).history(period="1d", interval="5m"))
     except Exception:
         return None
     if history.empty:

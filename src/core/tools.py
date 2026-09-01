@@ -2,6 +2,7 @@
 
 import math
 import re
+import time as time_module
 from collections.abc import Callable, Iterable
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
@@ -51,8 +52,32 @@ def parallel_map(fn: Callable[[_T], _R], items: Iterable[_T]) -> list[_R]:
     items = list(items)
     if not items:
         return []
-    with ThreadPoolExecutor(max_workers=min(len(items), 8)) as executor:
+    with ThreadPoolExecutor(max_workers=min(len(items), 4)) as executor:
         return list(executor.map(fn, items))
+
+
+_YF_RETRY_ATTEMPTS = 3
+_YF_RETRY_BASE_DELAY_SECONDS = 1.5
+
+
+def with_yf_retries(fn: Callable[[], _R]) -> _R:
+    """Retries a yfinance call with exponential backoff - real usage
+    against yfinance's free/unofficial Yahoo endpoint hits transient rate
+    limits and session ("crumb") errors often enough that a short retry
+    resolves plenty of them, without hammering Yahoo any harder than a
+    human manually retrying would. Only smooths over *transient* failures -
+    a sustained block still exhausts all attempts and raises, same as
+    before, so callers' existing except-and-fall-back-to-None handling
+    still applies."""
+    last_error: Exception | None = None
+    for attempt in range(_YF_RETRY_ATTEMPTS):
+        try:
+            return fn()
+        except Exception as e:  # noqa: BLE001 - deliberately broad, see docstring
+            last_error = e
+            if attempt < _YF_RETRY_ATTEMPTS - 1:
+                time_module.sleep(_YF_RETRY_BASE_DELAY_SECONDS * (2**attempt))
+    raise last_error
 
 
 # get_stock_price, get_market_cap, get_day_change, and get_pe_ratio all read
@@ -70,7 +95,7 @@ def _get_info(ticker: str) -> dict:
     cached = _info_cache.get(ticker)
     if cached is not None and monotonic() - cached[0] < _INFO_CACHE_TTL_SECONDS:
         return cached[1]
-    info = yf.Ticker(ticker).info
+    info = with_yf_retries(lambda: yf.Ticker(ticker).info)
     _info_cache[ticker] = (monotonic(), info)
     return info
 
@@ -152,7 +177,7 @@ def get_annualized_volatility(ticker: str, period: str = "1y") -> float:
         ticker: Stock ticker symbol, e.g. 'NVDA'.
         period: History window to compute volatility over, e.g. '1y'.
     """
-    history = yf.Ticker(ticker).history(period=period)
+    history = with_yf_retries(lambda: yf.Ticker(ticker).history(period=period))
     returns = history["Close"].pct_change().dropna()
     if len(returns) < 2:
         raise ValueError(f"Not enough price history to compute volatility for ticker {ticker!r}")
@@ -338,7 +363,7 @@ def get_price_history(ticker: str, period: str = "1mo") -> dict:
         ticker: Stock ticker symbol, e.g. 'NVDA'.
         period: How far back to look, e.g. '1d', '5d', '1mo', '6mo', '1y'.
     """
-    history = yf.Ticker(ticker).history(period=period)
+    history = with_yf_retries(lambda: yf.Ticker(ticker).history(period=period))
     if history.empty:
         raise ValueError(f"No price history found for ticker {ticker!r}")
 
@@ -366,7 +391,7 @@ def get_price_performance(ticker: str) -> dict:
     Args:
         ticker: Stock ticker symbol, e.g. 'NVDA'.
     """
-    history = yf.Ticker(ticker).history(period="1y")
+    history = with_yf_retries(lambda: yf.Ticker(ticker).history(period="1y"))
     if history.empty:
         raise ValueError(f"No price history found for ticker {ticker!r}")
 
@@ -416,7 +441,7 @@ def get_technical_indicators(ticker: str) -> dict:
     Args:
         ticker: Stock ticker symbol, e.g. 'NVDA'.
     """
-    history = yf.Ticker(ticker).history(period="1y")
+    history = with_yf_retries(lambda: yf.Ticker(ticker).history(period="1y"))
     if history.empty:
         raise ValueError(f"No price history found for ticker {ticker!r}")
 
@@ -475,7 +500,7 @@ def get_sparkline_prices(ticker: str, period: str = "1mo") -> list[float]:
         ticker: Stock ticker symbol, e.g. 'NVDA'.
         period: How far back to look, e.g. '1d', '5d', '1mo', '6mo', '1y'.
     """
-    history = yf.Ticker(ticker).history(period=period)
+    history = with_yf_retries(lambda: yf.Ticker(ticker).history(period=period))
     if history.empty:
         raise ValueError(f"No price history found for ticker {ticker!r}")
     return [float(close) for close in history["Close"]]
@@ -495,7 +520,7 @@ def get_sparkline(ticker: str, period: str = "1mo", benchmark: str | None = None
     interval = {"1d": "5m", "5d": "15m"}.get(period, "1d")
     fmt = {"1d": "%-I:%M %p", "5d": "%b %-d, %-I:%M %p"}.get(period, "%b %-d")
 
-    history = yf.Ticker(ticker).history(period=period, interval=interval, prepost=is_intraday)
+    history = with_yf_retries(lambda: yf.Ticker(ticker).history(period=period, interval=interval, prepost=is_intraday))
     if history.empty:
         raise ValueError(f"No price history found for ticker {ticker!r}")
     result = {
@@ -525,7 +550,7 @@ def _price_history(ticker: str, period: str, interval: str) -> tuple[list[float]
     factor (shares outstanding, net debt, EPS, dividend rate) changes far
     less often. This is an approximation, not a restatement of history.
     """
-    history = yf.Ticker(ticker).history(period=period, interval=interval)
+    history = with_yf_retries(lambda: yf.Ticker(ticker).history(period=period, interval=interval))
     if history.empty:
         raise ValueError(f"No price history found for ticker {ticker!r}")
     fmt = "%b %Y" if interval == "3mo" else "%b '%y"
@@ -992,7 +1017,7 @@ def get_day_prices(ticker: str) -> list[float]:
     a ticker with no intraday bars yet (e.g. pre-market) gets an empty list
     rather than failing the whole feed it's part of.
     """
-    history = yf.Ticker(ticker).history(period="1d", interval="5m")
+    history = with_yf_retries(lambda: yf.Ticker(ticker).history(period="1d", interval="5m"))
     return [float(close) for close in history["Close"]] if not history.empty else []
 
 
@@ -1425,7 +1450,7 @@ def get_highest_valuation_private_companies(limit: int = 6) -> list[dict]:
 
 
 def _five_year_change_percent(ticker: str) -> float | None:
-    history = yf.Ticker(ticker).history(period="5y", interval="1mo")
+    history = with_yf_retries(lambda: yf.Ticker(ticker).history(period="5y", interval="1mo"))
     if history.empty or len(history) < 2:
         return None
     first, last = float(history["Close"].iloc[0]), float(history["Close"].iloc[-1])
