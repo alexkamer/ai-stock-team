@@ -185,7 +185,7 @@ def _quote(ticker: str) -> dict | None:
             "sparkline": get_sparkline_prices(ticker),
             "day_prices": get_day_prices(ticker),
         }
-    except ValueError:
+    except Exception:
         return None
 
 
@@ -217,7 +217,7 @@ def _compare_quote(ticker: str) -> dict | None:
             "cash_flow_statement": get_cash_flow_statement(ticker),
             "price_ratios": get_price_ratios(ticker),
         }
-    except ValueError:
+    except Exception:
         return None
 
 
@@ -249,7 +249,7 @@ def _metric_history(args: tuple[str, str, str, str]) -> dict | None:
     ticker, metric, period, interval = args
     try:
         return {"ticker": ticker, **COMPARE_METRICS[metric](ticker, period=period, interval=interval)}
-    except ValueError:
+    except Exception:
         return None
 
 

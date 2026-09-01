@@ -727,7 +727,9 @@ def _benchmark_series(point_dates: list[str], ticker: str = _BENCHMARK_TICKER) -
     if daily is None:
         return [None] * len(point_dates)
     daily = daily.sort_index()
-    intraday = _intraday_closes_from(ticker).sort_index() if has_intraday else None
+    intraday = _intraday_closes_from(ticker) if has_intraday else None
+    if intraday is not None:
+        intraday = intraday.sort_index()
 
     base = float(daily.iloc[0])
     values: list[float | None] = []
@@ -735,9 +737,10 @@ def _benchmark_series(point_dates: list[str], ticker: str = _BENCHMARK_TICKER) -
         if "T" in d:
             ts = datetime.fromisoformat(d)
             matches = intraday.index[intraday.index <= ts] if intraday is not None else []
+            price = float(intraday.loc[matches[-1]]) if len(matches) else None
         else:
             matches = daily.index[daily.index <= date.fromisoformat(d)]
-        price = float((intraday if "T" in d else daily).loc[matches[-1]]) if len(matches) else None
+            price = float(daily.loc[matches[-1]]) if len(matches) else None
         values.append(round(price / base * 100, 3) if price is not None else None)
     return values
 
@@ -845,7 +848,7 @@ def _weighted_average(picks: list[dict], value_by_ticker: dict[str, float | None
     return round(total / weight_total, 2) if weight_total else None
 
 
-_SUMMARY_CACHE_TTL_SECONDS = 900  # 15 minutes - each theme's summary re-fetches a year of price history plus EPS/day-change for every ticker, so redoing that for all themes on every /themes page visit isn't worth it (same TTL-cache convention as core/themes.py's _universe_cache)
+_SUMMARY_CACHE_TTL_SECONDS = 1800  # 30 minutes - this recomputes across the whole catalog's ~150-250 unique tickers (price, day change, 1mo/1yr return, EPS, volatility) in one pass, enough real yfinance volume on its own to risk tripping the rate limiter if redone too often; the day/month/year return columns don't need to be fresher than this anyway (same TTL-cache convention as core/themes.py's _universe_cache)
 _summary_cache: tuple[float, list[dict]] | None = None
 
 
